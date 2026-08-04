@@ -2,6 +2,8 @@ import Link from "next/link";
 import { seedAgencies } from "@/lib/seed";
 import { activeTourismAgencies } from "@/lib/tourism";
 
+// A antiga chamada “Quem conecta o Rio Grande do Sul ao mundo” foi substituída por uma descrição neutra do diretório.
+
 const cityCount = new Set(seedAgencies.map((agency) => agency.city)).size;
 const tourismCityCount = new Set(activeTourismAgencies.map((agency) => agency.city)).size;
 
@@ -10,9 +12,9 @@ export default function Home() {
     <main>
       <section className="hero">
         <div className="hero-copy">
-          <span className="eyebrow">Diretório comercial · RS</span>
-          <h1>Quem conecta o Rio Grande do Sul ao mundo.</h1>
-          <p className="hero-lead">Uma base viva para encontrar, qualificar e acompanhar agências de intercâmbio em todo o estado — com a fonte de cada dado à vista.</p>
+          <span className="eyebrow">Diretório estadual · RS</span>
+          <h1>As agências do Rio Grande do Sul, em um só mapa.</h1>
+          <p className="hero-lead">Uma base pública para encontrar agências de intercâmbio e turismo em todo o estado — com a fonte de cada dado à vista.</p>
           <div className="hero-actions">
             <Link className="button primary" href="/agencias">Explorar intercâmbio <span>↗</span></Link>
             <Link className="button text" href="/turismo">Agências de turismo <span>→</span></Link>
@@ -30,8 +32,8 @@ export default function Home() {
 
       <section className="value-strip">
         <article><span>01</span><h2>Descobrir</h2><p>Busca por nome, cidade, programa e perfil de público.</p></article>
-        <article><span>02</span><h2>Priorizar</h2><p>Potencial comercial A/B/C com critérios visíveis e editáveis.</p></article>
-        <article><span>03</span><h2>Relacionar</h2><p>Histórico de contatos e próximos passos na mesma ficha.</p></article>
+        <article><span>02</span><h2>Comparar</h2><p>Filtros por cidade, região, perfil e situação cadastral.</p></article>
+        <article><span>03</span><h2>Acompanhar</h2><p>Histórico de contatos e próximas ações na mesma ficha.</p></article>
       </section>
 
       <section className="tourism-callout">
@@ -55,9 +57,10 @@ export default function Home() {
       </section>
 
       <section className="cta-band">
-        <div><span className="eyebrow light">Operação comercial</span><h2>Do mapa à próxima conversa.</h2></div>
-        <Link href="/admin" className="button light-button">Abrir painel <span>↗</span></Link>
+        <div><span className="eyebrow light">Área interna</span><h2>Do mapa à próxima ação.</h2></div>
+        <Link href="/acompanhamento" className="button light-button">Abrir acompanhamento <span>↗</span></Link>
       </section>
     </main>
   );
 }
+
