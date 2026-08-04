@@ -1,5 +1,7 @@
 import { getCommercialSummary, listAgencies, listLeads, summarizeAnalytics } from "@/db";
 import { getAuthenticatedUserWithRole } from "@/app/auth";
+import { regionForCity } from "@/lib/regional";
+import { activeTourismAgencies } from "@/lib/tourism";
 import { commercialStatuses } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -8,9 +10,13 @@ export async function GET() {
   const user = await getAuthenticatedUserWithRole();
   if (!user) return Response.json({ error: "Autenticação necessária." }, { status: 401 });
   const [agencies, activity, leads, events] = await Promise.all([listAgencies(), getCommercialSummary(), listLeads(), summarizeAnalytics(30)]);
+  const directory = [
+    ...agencies.map((agency) => ({ city: agency.city, region: agency.region })),
+    ...activeTourismAgencies.map((agency) => ({ city: agency.city, region: regionForCity(agency.city) })),
+  ];
   const status = commercialStatuses.map((label) => ({ label, value: agencies.filter((agency) => (agency.commercialStatus ?? "Não contatada") === label).length }));
-  const cities = [...new Map(agencies.map((agency) => [agency.city, agencies.filter((item) => item.city === agency.city).length])).entries()].map(([label, value]) => ({ label, value })).sort((a, b) => b.value - a.value).slice(0, 12);
-  const region = [...new Map(agencies.map((agency) => [agency.region, agencies.filter((item) => item.region === agency.region).reduce((sum, item) => sum + (item.opportunityScore ?? 0), 0)])).entries()].map(([label, value]) => ({ label, value })).sort((a, b) => b.value - a.value);
+  const cities = [...new Map(directory.map((agency) => [agency.city, directory.filter((item) => item.city === agency.city).length])).entries()].map(([label, value]) => ({ label, value })).sort((a, b) => b.value - a.value).slice(0, 12);
+  const region = [...new Map(directory.map((agency) => [agency.region, directory.filter((item) => item.region === agency.region).length])).entries()].map(([label, value]) => ({ label, value })).sort((a, b) => b.value - a.value);
   const pipeline = agencies.filter((agency) => ["Oportunidade qualificada", "Proposta enviada", "Em negociação"].includes(agency.commercialStatus ?? "")).reduce((sum, agency) => sum + (agency.estimatedValue ?? 0), 0);
-  return Response.json({ generatedAt: new Date().toISOString(), role: user.role, totals: { agencies: agencies.length, contacts: activity.contacts.length, tasks: activity.tasks.length, openTasks: activity.tasks.filter((task) => task.status === "Aberta").length, leads: leads.length, pipeline }, status, cities, region, events });
+  return Response.json({ generatedAt: new Date().toISOString(), role: user.role, totals: { agencies: directory.length, exchangeAgencies: agencies.length, tourismAgencies: activeTourismAgencies.length, contacts: activity.contacts.length, tasks: activity.tasks.length, openTasks: activity.tasks.filter((task) => task.status === "Aberta").length, leads: leads.length, pipeline }, status, cities, region, events });
 }

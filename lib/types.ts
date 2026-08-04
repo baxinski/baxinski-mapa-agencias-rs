@@ -124,6 +124,8 @@ export interface TaskRecord {
 export interface DashboardResponse {
   metrics: {
     totalAgencies: number;
+    exchangeAgencies: number;
+    tourismAgencies: number;
     notContacted: number;
     contacted: number;
     opportunities: number;

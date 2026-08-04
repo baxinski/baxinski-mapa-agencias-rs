@@ -1,12 +1,18 @@
 import { getCommercialSummary, listAgencies } from "@/db";
-import { commercialStatuses, type Agency, type DashboardResponse } from "@/lib/types";
+import { regionForCity } from "@/lib/regional";
+import { activeTourismAgencies } from "@/lib/tourism";
+import { commercialStatuses, type DashboardResponse } from "@/lib/types";
 import { getAuthenticatedUserWithRole } from "@/app/auth";
 
 export const dynamic = "force-dynamic";
 
 const dateKey = (value: Date) => value.toISOString().slice(0, 10);
 
-function countsBy(items: Agency[], getKey: (agency: Agency) => string) {
+type DirectoryRecord = { city: string; region: string };
+
+const tourismDirectoryRecords: DirectoryRecord[] = activeTourismAgencies.map((agency) => ({ city: agency.city, region: regionForCity(agency.city) }));
+
+function countsBy(items: DirectoryRecord[], getKey: (item: DirectoryRecord) => string) {
   const counts = new Map<string, number>();
   for (const item of items) counts.set(getKey(item), (counts.get(getKey(item)) ?? 0) + 1);
   return [...counts.entries()].map(([label, value]) => ({ label, value })).sort((a, b) => b.value - a.value);
@@ -27,10 +33,12 @@ export async function GET() {
   const overdueTasks = openTasks.filter((task) => task.dueAt.slice(0, 10) < todayKey).slice(0, 8);
   const todayTasks = openTasks.filter((task) => task.dueAt.slice(0, 10) === todayKey).slice(0, 8);
   const contactsLast7Days = activity.contacts.filter((contact) => contact.contactDate >= dateKey(lastWeek)).length;
-  const byCity = countsBy(agencies, (agency) => agency.city).slice(0, 8);
-  const regionScores = new Map<string, number>();
-  for (const agency of agencies) regionScores.set(agency.region, (regionScores.get(agency.region) ?? 0) + (agency.opportunityScore ?? 0));
-  const byRegion = [...regionScores.entries()].map(([label, value]) => ({ label, value })).sort((a, b) => b.value - a.value).slice(0, 8);
+  const directoryRecords: DirectoryRecord[] = [
+    ...agencies.map((agency) => ({ city: agency.city, region: agency.region })),
+    ...tourismDirectoryRecords,
+  ];
+  const byCity = countsBy(directoryRecords, (item) => item.city).slice(0, 8);
+  const byRegion = countsBy(directoryRecords, (item) => item.region).slice(0, 8);
   const contactsByDay: Array<{ label: string; value: number }> = [];
   for (let index = 6; index >= 0; index -= 1) {
     const day = new Date(today);
@@ -39,11 +47,14 @@ export async function GET() {
     contactsByDay.push({ label: key.slice(5).replace("-", "/"), value: activity.contacts.filter((contact) => contact.contactDate === key).length });
   }
   const pipelineByStatus = [...opportunityStatuses].map((label) => ({ label, value: agencies.filter((agency) => (agency.commercialStatus ?? "Não contatada") === label).reduce((total, agency) => total + (agency.estimatedValue ?? 0), 0) }));
-  const total = agencies.length;
+  const exchangeTotal = agencies.length;
+  const total = directoryRecords.length;
   const clients = statuses.filter((status) => status === "Cliente").length;
   const response: DashboardResponse = {
     metrics: {
       totalAgencies: total,
+      exchangeAgencies: exchangeTotal,
+      tourismAgencies: activeTourismAgencies.length,
       notContacted: statuses.filter((status) => status === "Não contatada").length,
       contacted: statuses.filter((status) => status !== "Não contatada").length,
       opportunities: statuses.filter((status) => opportunityStatuses.has(status)).length,
@@ -55,7 +66,7 @@ export async function GET() {
       contactsLast7Days,
       overdueFollowUps: overdueTasks.length,
       todayFollowUps: todayTasks.length,
-      conversionRate: total ? Number(((clients / total) * 100).toFixed(1)) : 0,
+      conversionRate: exchangeTotal ? Number(((clients / exchangeTotal) * 100).toFixed(1)) : 0,
       pipelineValue: agencies.filter((agency) => opportunityStatuses.has(agency.commercialStatus ?? "Não contatada")).reduce((totalValue, agency) => totalValue + (agency.estimatedValue ?? 0), 0),
     },
     charts: {
