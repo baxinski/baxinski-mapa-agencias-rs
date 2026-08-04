@@ -1,7 +1,7 @@
-import FollowUpBoard from "@/app/components/FollowUpBoard";
-import { requireAuthenticatedUser } from "@/app/auth";
+import { redirect } from "next/navigation";
 
 export default async function FollowUpsPage() {
-  await requireAuthenticatedUser("/follow-ups");
-  return <main className="crm-page"><FollowUpBoard /></main>;
+  // FollowUpBoard was consolidated into AccompanimentWorkspace; this legacy route keeps the old bookmark working.
+  redirect("/acompanhamento");
 }
+
