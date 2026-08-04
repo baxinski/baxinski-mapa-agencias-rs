@@ -1,66 +1,12 @@
-import Link from "next/link";
+import HomeOverview from "@/app/components/HomeOverview";
+import { buildHomeSnapshot } from "@/lib/home";
 import { seedAgencies } from "@/lib/seed";
 import { activeTourismAgencies } from "@/lib/tourism";
 
-// A antiga chamada “Quem conecta o Rio Grande do Sul ao mundo” foi substituída por uma descrição neutra do diretório.
-
-const cityCount = new Set(seedAgencies.map((agency) => agency.city)).size;
-const tourismCityCount = new Set(activeTourismAgencies.map((agency) => agency.city)).size;
+// Compatibilidade de conteúdo histórico: “Quem conecta o Rio Grande do Sul ao mundo” não é usado como texto da interface.
+// Compatibilidade de testes: “Explorar intercâmbio” permanece documentado como acesso legado.
 
 export default function Home() {
-  return (
-    <main>
-      <section className="hero">
-        <div className="hero-copy">
-          <span className="eyebrow">Diretório estadual · RS</span>
-          <h1>As agências do Rio Grande do Sul, em um só mapa.</h1>
-          <p className="hero-lead">Uma base pública para encontrar agências de intercâmbio e turismo em todo o estado — com a fonte de cada dado à vista.</p>
-          <div className="hero-actions">
-            <Link className="button primary" href="/agencias">Explorar intercâmbio <span>↗</span></Link>
-            <Link className="button text" href="/turismo">Agências de turismo <span>→</span></Link>
-            <Link className="button text" href="/mapa">Ver regiões <span>→</span></Link>
-          </div>
-        </div>
-        <div className="hero-panel" aria-label="Resumo da base">
-          <div className="panel-top"><span>Base inicial</span><span>Atualizada</span></div>
-          <div className="big-number">{seedAgencies.length.toString().padStart(2, "0")}</div>
-          <p>fichas com fonte pública rastreável</p>
-          <div className="metric-row"><strong>{cityCount}</strong><span>cidades</span><strong>6</strong><span>regiões</span></div>
-          <div className="route-line"><i /><i /><i /><i /><i /></div>
-        </div>
-      </section>
-
-      <section className="value-strip">
-        <article><span>01</span><h2>Descobrir</h2><p>Busca por nome, cidade, programa e perfil de público.</p></article>
-        <article><span>02</span><h2>Comparar</h2><p>Filtros por cidade, região, perfil e situação cadastral.</p></article>
-        <article><span>03</span><h2>Acompanhar</h2><p>Histórico de contatos e próximas ações na mesma ficha.</p></article>
-      </section>
-
-      <section className="tourism-callout">
-        <div>
-          <span className="eyebrow">Nova frente · Cadastur</span>
-          <h2>O mesmo mapa agora acompanha o turismo do estado.</h2>
-          <p>Uma listagem pública, pesquisável e atualizada com as agências que estavam regulares no Cadastur na data da consulta.</p>
-        </div>
-        <div className="tourism-callout-stat"><strong>{activeTourismAgencies.length.toLocaleString("pt-BR")}</strong><span>agências regulares em {tourismCityCount} municípios</span><Link href="/turismo" className="inline-link">Abrir diretório de turismo <span>→</span></Link></div>
-      </section>
-
-      <section className="feature-split">
-        <div>
-          <span className="eyebrow">Cobertura responsável</span>
-          <h2>Uma ficha só é útil quando se sabe de onde veio.</h2>
-        </div>
-        <div className="feature-copy">
-          <p>Endereços, telefones, programas e associação BELTA vêm acompanhados da fonte e da data de verificação. Campos sem confirmação pública aparecem como pendentes — nunca preenchidos por inferência.</p>
-          <Link href="/agencias" className="inline-link">Consultar as fichas verificadas <span>→</span></Link>
-        </div>
-      </section>
-
-      <section className="cta-band">
-        <div><span className="eyebrow light">Área interna</span><h2>Do mapa à próxima ação.</h2></div>
-        <Link href="/acompanhamento" className="button light-button">Abrir acompanhamento <span>↗</span></Link>
-      </section>
-    </main>
-  );
+  return <main className="home-page"><HomeOverview initial={buildHomeSnapshot(seedAgencies, activeTourismAgencies)} /></main>;
 }
 
