@@ -6,6 +6,8 @@ export async function GET(request: Request) {
   const city = (params.get("city") ?? "").trim();
   const onlyWebsite = params.get("website") === "1";
   const onlyPhone = params.get("phone") === "1";
+  const page = Math.max(1, Number(params.get("page") ?? 1) || 1);
+  const pageSize = Math.min(100, Math.max(12, Number(params.get("limit") ?? 48) || 48));
 
   const records = activeTourismAgencies.filter((agency) => {
     const haystack = [
@@ -24,9 +26,13 @@ export async function GET(request: Request) {
       (!onlyPhone || Boolean(agency.phone));
   }).sort((a, b) => a.tradeName.localeCompare(b.tradeName, "pt-BR"));
 
+  const start = (page - 1) * pageSize;
   return Response.json({
-    records,
+    records: records.slice(start, start + pageSize),
     total: records.length,
+    page,
+    pageSize,
+    hasMore: start + pageSize < records.length,
     source: tourismSource,
     cities: [...new Set(activeTourismAgencies.map((agency) => agency.city))].sort((a, b) => a.localeCompare(b, "pt-BR")),
   });

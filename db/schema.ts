@@ -109,3 +109,81 @@ export const githubSessions = sqliteTable("github_sessions", {
   createdAt: text("created_at").notNull(),
   expiresAt: text("expires_at").notNull(),
 });
+
+export const leads = sqliteTable("leads", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  whatsapp: text("whatsapp").notNull(),
+  email: text("email").notNull(),
+  city: text("city").notNull(),
+  destination: text("destination").notNull(),
+  exchangeType: text("exchange_type").notNull(),
+  budgetRange: text("budget_range"),
+  travelDate: text("travel_date"),
+  duration: text("duration"),
+  travelerAge: integer("traveler_age"),
+  notes: text("notes"),
+  consent: integer("consent").notNull().default(0),
+  source: text("source").notNull().default("public-form"),
+  status: text("status").notNull().default("Novo"),
+  assignedTo: text("assigned_to"),
+  matchedAgencyIds: text("matched_agency_ids").notNull().default("[]"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
+export const messageTemplates = sqliteTable("message_templates", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  category: text("category").notNull(),
+  body: text("body").notNull(),
+  active: integer("active").notNull().default(1),
+  createdBy: text("created_by"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
+export const userRoles = sqliteTable("user_roles", {
+  userKey: text("user_key").primaryKey(),
+  login: text("login"),
+  email: text("email").notNull(),
+  displayName: text("display_name").notNull(),
+  role: text("role").notNull().default("consulta"),
+  active: integer("active").notNull().default(1),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
+export const analyticsEvents = sqliteTable("analytics_events", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  path: text("path"),
+  agencyId: text("agency_id"),
+  userEmail: text("user_email"),
+  metadata: text("metadata").notNull().default("{}"),
+  createdAt: text("created_at").notNull(),
+});
+
+export const agencyPlans = sqliteTable("agency_plans", {
+  id: text("id").primaryKey(),
+  code: text("code").notNull().unique(),
+  name: text("name").notNull(),
+  description: text("description").notNull(),
+  monthlyPrice: real("monthly_price"),
+  features: text("features").notNull().default("[]"),
+  active: integer("active").notNull().default(1),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
+export const agencySubscriptions = sqliteTable("agency_subscriptions", {
+  id: text("id").primaryKey(),
+  agencyId: text("agency_id").notNull(),
+  planId: text("plan_id").notNull(),
+  status: text("status").notNull().default("trial"),
+  startedAt: text("started_at").notNull(),
+  endsAt: text("ends_at"),
+  externalCustomerId: text("external_customer_id"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});

@@ -11,6 +11,7 @@ const errors: Record<string, string> = {
   github_token_failed: "O GitHub não autorizou esta sessão.",
   github_token_missing: "O GitHub não retornou uma sessão válida.",
   github_profile_failed: "Não foi possível carregar o perfil do GitHub.",
+  sem_permissao: "Sua conta está autenticada, mas não possui permissão para abrir esta área.",
 };
 
 export default function GitHubLogin({ returnTo, error }: { returnTo: string; error?: string }) {

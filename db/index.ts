@@ -1,7 +1,7 @@
 import { env } from "cloudflare:workers";
 import { seedAgencies } from "@/lib/seed";
 import { calculateOpportunityScore } from "@/lib/scoring";
-import type { Agency, ContactRecord, StatusHistoryRecord, TaskRecord } from "@/lib/types";
+import type { Agency, AgencyPlan, AgencySubscription, AnalyticsEventRecord, ContactRecord, LeadRecord, MessageTemplate, StatusHistoryRecord, TaskRecord, UserRoleRecord } from "@/lib/types";
 
 type RawAgency = Omit<Agency, "programs" | "belta"> & { programs: string; belta: number | null };
 
@@ -75,6 +75,42 @@ async function initializeDatabase() {
       created_at TEXT NOT NULL, expires_at TEXT NOT NULL
     )`),
     db.prepare("CREATE INDEX IF NOT EXISTS github_sessions_expires_idx ON github_sessions(expires_at)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS leads (
+      id TEXT PRIMARY KEY, name TEXT NOT NULL, whatsapp TEXT NOT NULL, email TEXT NOT NULL,
+      city TEXT NOT NULL, destination TEXT NOT NULL, exchange_type TEXT NOT NULL,
+      budget_range TEXT, travel_date TEXT, duration TEXT, traveler_age INTEGER, notes TEXT,
+      consent INTEGER NOT NULL DEFAULT 0, source TEXT NOT NULL DEFAULT 'public-form',
+      status TEXT NOT NULL DEFAULT 'Novo', assigned_to TEXT, matched_agency_ids TEXT NOT NULL DEFAULT '[]',
+      created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS leads_status_idx ON leads(status, created_at)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS message_templates (
+      id TEXT PRIMARY KEY, name TEXT NOT NULL, category TEXT NOT NULL, body TEXT NOT NULL,
+      active INTEGER NOT NULL DEFAULT 1, created_by TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS message_templates_category_idx ON message_templates(category, active)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS user_roles (
+      user_key TEXT PRIMARY KEY, login TEXT, email TEXT NOT NULL, display_name TEXT NOT NULL,
+      role TEXT NOT NULL DEFAULT 'consulta', active INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+    )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS analytics_events (
+      id TEXT PRIMARY KEY, name TEXT NOT NULL, path TEXT, agency_id TEXT, user_email TEXT,
+      metadata TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS analytics_events_name_idx ON analytics_events(name, created_at)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS agency_plans (
+      id TEXT PRIMARY KEY, code TEXT NOT NULL UNIQUE, name TEXT NOT NULL, description TEXT NOT NULL,
+      monthly_price REAL, features TEXT NOT NULL DEFAULT '[]', active INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+    )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS agency_subscriptions (
+      id TEXT PRIMARY KEY, agency_id TEXT NOT NULL, plan_id TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'trial',
+      started_at TEXT NOT NULL, ends_at TEXT, external_customer_id TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+      FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE,
+      FOREIGN KEY (plan_id) REFERENCES agency_plans(id)
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS agency_subscriptions_agency_idx ON agency_subscriptions(agency_id, status)"),
   ]);
 
   const agencyColumns: Array<[string, string]> = [
@@ -101,6 +137,33 @@ async function initializeDatabase() {
         item.exchangeLead, JSON.stringify(item.programs), item.belta === null ? null : Number(item.belta), item.units,
         item.audienceProfile, item.commercialPotential, item.notes, item.verificationStatus, item.sourceUrl,
         item.sourceLabel, item.verifiedAt, item.updatedAt)));
+  }
+
+  const templateCount = await db.prepare("SELECT COUNT(*) AS total FROM message_templates").first<{ total: number }>();
+  if ((templateCount?.total ?? 0) === 0) {
+    const now = new Date().toISOString();
+    const templates: Array<[string, string, string, string]> = [
+      ["tpl-whatsapp-primeiro", "Primeiro contato Â· WhatsApp", "Primeiro contato por WhatsApp", "OlÃ¡, {{agencia}}! Tudo bem? Sou {{vendedor}}, da equipe Mapa de AgÃªncias RS. Vi que vocÃªs atuam em {{cidade}} e gostaria de apresentar uma parceria para ampliar as oportunidades de intercÃ¢mbio. Podemos conversar?"],
+      ["tpl-email-primeiro", "Primeiro contato Â· e-mail", "Primeiro contato por e-mail", "OlÃ¡, {{contato}}.\n\nSou {{vendedor}}, da equipe Mapa de AgÃªncias RS. Estamos mapeando parceiros em {{cidade}} e gostarÃ­amos de entender como {{agencia}} trabalha com {{produto}}.\n\nPodemos agendar uma conversa rÃ¡pida?"],
+      ["tpl-followup", "Follow-up sem retorno", "Follow-up", "OlÃ¡, {{contato}}! Retomo nossa conversa sobre {{produto}} para saber se este Ã© um bom momento para avanÃ§armos. Fico Ã  disposiÃ§Ã£o e posso enviar a apresentaÃ§Ã£o novamente."],
+      ["tpl-reuniao", "ConfirmaÃ§Ã£o de reuniÃ£o", "ReuniÃ£o", "OlÃ¡, {{contato}}! Confirmando nossa reuniÃ£o de {{data_reuniao}} sobre {{produto}}. Se precisar ajustar o horÃ¡rio, Ã© sÃ³ me avisar."],
+      ["tpl-proposta", "Proposta enviada", "Proposta enviada", "OlÃ¡, {{contato}}! A proposta de {{produto}} foi enviada. Posso esclarecer algum ponto ou marcamos um horÃ¡rio para revisar juntos?"],
+    ];
+    await db.batch(templates.map(([id, name, category, body]) => db.prepare(`INSERT OR IGNORE INTO message_templates (id, name, category, body, active, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, 1, NULL, ?, ?)`)
+      .bind(id, name, category, body, now, now)));
+  }
+
+  const planCount = await db.prepare("SELECT COUNT(*) AS total FROM agency_plans").first<{ total: number }>();
+  if ((planCount?.total ?? 0) === 0) {
+    const now = new Date().toISOString();
+    const plans: Array<[string, string, string, string, number | null]> = [
+      ["plan-basico", "basico", "Cadastro bÃ¡sico", "Nome, cidade, contatos e posiÃ§Ã£o normal no diretÃ³rio", null],
+      ["plan-verificado", "verificado", "Perfil verificado", "Selo, pÃ¡gina completa, fotos, descriÃ§Ã£o e botÃ£o de orÃ§amento", null],
+      ["plan-regional", "regional", "Destaque regional", "PosiÃ§Ã£o superior e destaque por cidade ou regiÃ£o", null],
+      ["plan-leads", "leads", "Plano de leads", "Recebimento de contatos, histÃ³rico de leads e indicadores", null],
+    ];
+    await db.batch(plans.map(([id, code, name, description, monthlyPrice]) => db.prepare(`INSERT OR IGNORE INTO agency_plans (id, code, name, description, monthly_price, features, active, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)`)
+      .bind(id, code, name, description, monthlyPrice, JSON.stringify([]), now, now)));
   }
 }
 
@@ -129,196 +192,4 @@ function normalize(row: Record<string, unknown>): Agency {
     googleRating: raw.googleRating == null ? null : Number(raw.googleRating), googleReviewCount: raw.googleReviewCount == null ? null : Number(raw.googleReviewCount),
     isFranchise: raw.isFranchise == null ? null : Boolean(raw.isFranchise), destinations: parseList(raw.destinations), exchangeTypes: parseList(raw.exchangeTypes),
     description: raw.description as string | null, hours: raw.hours as string | null, logoUrl: raw.logoUrl as string | null,
-    competitors: raw.competitors as string | null, productsOfInterest: raw.productsOfInterest as string | null, needs: raw.needs as string | null,
-    latitude: raw.latitude == null ? null : Number(raw.latitude), longitude: raw.longitude == null ? null : Number(raw.longitude),
-  };
-}
-
-const agencySelect = `SELECT a.id, a.slug, a.legal_name AS legalName, a.trade_name AS tradeName,
-  a.city, a.region, a.address, a.phone, a.email, a.website, a.instagram, a.linkedin,
-  a.directors, a.owners, a.commercial_manager AS commercialManager, a.exchange_lead AS exchangeLead,
-  a.programs, a.belta, a.units, a.audience_profile AS audienceProfile,
-  a.commercial_potential AS commercialPotential, a.notes, a.verification_status AS verificationStatus,
-  a.source_url AS sourceUrl, a.source_label AS sourceLabel, a.verified_at AS verifiedAt, a.updated_at AS updatedAt,
-  a.state, a.neighborhood, a.cep, a.whatsapp, a.facebook, a.network, a.commercial_status AS commercialStatus, a.assigned_to AS assignedTo,
-  a.opportunity_score AS opportunityScore, a.estimated_value AS estimatedValue, a.first_contact_at AS firstContactAt,
-  a.last_contact_at AS lastContactAt, a.next_follow_up_at AS nextFollowUpAt, a.loss_reason AS lossReason,
-  a.google_rating AS googleRating, a.google_review_count AS googleReviewCount, a.is_franchise AS isFranchise,
-  a.destinations, a.exchange_types AS exchangeTypes, a.description, a.hours, a.logo_url AS logoUrl, a.competitors,
-  a.products_of_interest AS productsOfInterest, a.needs, a.latitude, a.longitude,
-  (SELECT COUNT(*) FROM contacts c WHERE c.agency_id = a.id) AS contactCount FROM agencies a`;
-
-export async function listAgencies() {
-  await ensureDatabase();
-  const result = await database().prepare(`${agencySelect} ORDER BY a.trade_name`).all<Record<string, unknown>>();
-  return result.results.map(normalize);
-}
-
-export async function getAgency(key: string) {
-  await ensureDatabase();
-  const row = await database().prepare(`${agencySelect} WHERE a.id = ? OR a.slug = ?`).bind(key, key).first<Record<string, unknown>>();
-  return row ? normalize(row) : null;
-}
-
-export async function saveAgency(item: Agency) {
-  await ensureDatabase();
-  await database().prepare(`INSERT INTO agencies (
-    id, slug, legal_name, trade_name, city, region, address, phone, email, website, instagram, linkedin,
-    directors, owners, commercial_manager, exchange_lead, programs, belta, units, audience_profile,
-    commercial_potential, notes, verification_status, source_url, source_label, verified_at, updated_at
-  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-    .bind(item.id, item.slug, item.legalName, item.tradeName, item.city, item.region, item.address, item.phone,
-      item.email, item.website, item.instagram, item.linkedin, item.directors, item.owners, item.commercialManager,
-      item.exchangeLead, JSON.stringify(item.programs), item.belta === null ? null : Number(item.belta), item.units,
-      item.audienceProfile, item.commercialPotential, item.notes, item.verificationStatus, item.sourceUrl,
-      item.sourceLabel, item.verifiedAt, item.updatedAt).run();
-  await database().prepare(`UPDATE agencies SET opportunity_score=?, commercial_status=?, assigned_to=?, estimated_value=?,
-    state=?, neighborhood=?, cep=?, whatsapp=?, facebook=?, network=?, destinations=?, exchange_types=?, description=?, hours=?, logo_url=?, competitors=?, products_of_interest=?, needs=?, latitude=?, longitude=? WHERE id=?`)
-    .bind(calculateOpportunityScore(item), item.commercialStatus ?? "NÃ£o contatada", item.assignedTo ?? null, item.estimatedValue ?? null,
-      item.state ?? "RS", item.neighborhood ?? null, item.cep ?? null, item.whatsapp ?? null, item.facebook ?? null, item.network ?? null, JSON.stringify(item.destinations ?? []), JSON.stringify(item.exchangeTypes ?? []),
-      item.description ?? null, item.hours ?? null, item.logoUrl ?? null, item.competitors ?? null, item.productsOfInterest ?? null, item.needs ?? null, item.latitude ?? null, item.longitude ?? null, item.id).run();
-  return getAgency(item.id);
-}
-
-export async function updateAgency(id: string, item: Agency) {
-  await ensureDatabase();
-  await database().prepare(`UPDATE agencies SET slug=?, legal_name=?, trade_name=?, city=?, region=?, address=?,
-    phone=?, email=?, website=?, instagram=?, linkedin=?, directors=?, owners=?, commercial_manager=?,
-    exchange_lead=?, programs=?, belta=?, units=?, audience_profile=?, commercial_potential=?, notes=?,
-    verification_status=?, source_url=?, source_label=?, verified_at=?, updated_at=? WHERE id=?`)
-    .bind(item.slug, item.legalName, item.tradeName, item.city, item.region, item.address, item.phone, item.email,
-      item.website, item.instagram, item.linkedin, item.directors, item.owners, item.commercialManager,
-      item.exchangeLead, JSON.stringify(item.programs), item.belta === null ? null : Number(item.belta), item.units,
-      item.audienceProfile, item.commercialPotential, item.notes, item.verificationStatus, item.sourceUrl,
-      item.sourceLabel, item.verifiedAt, item.updatedAt, id).run();
-  await database().prepare(`UPDATE agencies SET state=?, neighborhood=?, cep=?, whatsapp=?, facebook=?, network=?, commercial_status=?, assigned_to=?,
-    opportunity_score=?, estimated_value=?, first_contact_at=?, last_contact_at=?, next_follow_up_at=?, loss_reason=?,
-    google_rating=?, google_review_count=?, is_franchise=?, destinations=?, exchange_types=?, description=?, hours=?, logo_url=?, competitors=?, products_of_interest=?, needs=?, latitude=?, longitude=? WHERE id=?`)
-    .bind(item.state ?? "RS", item.neighborhood ?? null, item.cep ?? null, item.whatsapp ?? null, item.facebook ?? null, item.network ?? null, item.commercialStatus ?? "NÃ£o contatada", item.assignedTo ?? null,
-      calculateOpportunityScore(item), item.estimatedValue ?? null, item.firstContactAt ?? null, item.lastContactAt ?? null,
-      item.nextFollowUpAt ?? null, item.lossReason ?? null, item.googleRating ?? null, item.googleReviewCount ?? null,
-      item.isFranchise == null ? null : Number(item.isFranchise), JSON.stringify(item.destinations ?? []), JSON.stringify(item.exchangeTypes ?? []),
-      item.description ?? null, item.hours ?? null, item.logoUrl ?? null, item.competitors ?? null, item.productsOfInterest ?? null, item.needs ?? null, item.latitude ?? null, item.longitude ?? null, id).run();
-  return getAgency(id);
-}
-
-export async function listContacts(agencyId: string) {
-  await ensureDatabase();
-  const result = await database().prepare(`SELECT id, agency_id AS agencyId, contact_date AS contactDate,
-    channel, contact_name AS contactName, summary, next_step AS nextStep, created_at AS createdAt,
-    interaction_type AS interactionType, contact_time AS contactTime, result, next_contact_at AS nextContactAt, created_by AS createdBy
-    FROM contacts WHERE agency_id = ? ORDER BY contact_date DESC, created_at DESC`).bind(agencyId).all<ContactRecord>();
-  return result.results;
-}
-
-export async function listAllContacts() {
-  await ensureDatabase();
-  const result = await database().prepare(`SELECT id, agency_id AS agencyId, contact_date AS contactDate,
-    channel, contact_name AS contactName, summary, next_step AS nextStep, created_at AS createdAt,
-    interaction_type AS interactionType, contact_time AS contactTime, result, next_contact_at AS nextContactAt, created_by AS createdBy
-    FROM contacts ORDER BY contact_date DESC, created_at DESC`).all<ContactRecord>();
-  return result.results;
-}
-
-export async function addContact(contact: ContactRecord) {
-  await ensureDatabase();
-  await database().prepare(`INSERT INTO contacts (id, agency_id, contact_date, channel, contact_name, summary, next_step, created_at,
-    interaction_type, contact_time, result, next_contact_at, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(
-      contact.id, contact.agencyId, contact.contactDate, contact.channel, contact.contactName, contact.summary, contact.nextStep, contact.createdAt,
-      contact.interactionType ?? contact.channel, contact.contactTime ?? null, contact.result ?? null, contact.nextContactAt ?? null, contact.createdBy ?? null).run();
-  const current = await getAgency(contact.agencyId);
-  const nextStatus = current?.commercialStatus === "NÃ£o contatada" ? "Contato iniciado" : (current?.commercialStatus ?? "Contato iniciado");
-  await database().prepare(`UPDATE agencies SET last_contact_at=?, first_contact_at=COALESCE(first_contact_at, ?),
-    commercial_status=?, opportunity_score=? WHERE id=?`).bind(contact.contactDate, contact.contactDate, nextStatus,
-      calculateOpportunityScore({ ...current, commercialStatus: nextStatus, lastContactAt: contact.contactDate }), contact.agencyId).run();
-  return contact;
-}
-
-export async function addStatusHistory(item: StatusHistoryRecord) {
-  await ensureDatabase();
-  await database().prepare(`INSERT INTO agency_status_history (id, agency_id, previous_status, new_status, user_email, note, changed_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?)`).bind(item.id, item.agencyId, item.previousStatus, item.newStatus, item.userEmail, item.note, item.changedAt).run();
-  return item;
-}
-
-export async function listStatusHistory(agencyId: string) {
-  await ensureDatabase();
-  const result = await database().prepare(`SELECT id, agency_id AS agencyId, previous_status AS previousStatus,
-    new_status AS newStatus, user_email AS userEmail, note, changed_at AS changedAt
-    FROM agency_status_history WHERE agency_id = ? ORDER BY changed_at DESC`).bind(agencyId).all<StatusHistoryRecord>();
-  return result.results;
-}
-
-export async function listTasks() {
-  await ensureDatabase();
-  const result = await database().prepare(`SELECT t.id, t.agency_id AS agencyId, t.title, t.description,
-    t.assigned_to AS assignedTo, t.due_at AS dueAt, t.priority, t.status, t.activity_type AS activityType,
-    t.notes, t.completed_at AS completedAt, t.created_at AS createdAt, t.created_by AS createdBy,
-    a.trade_name AS agencyName, a.city AS agencyCity
-    FROM tasks t JOIN agencies a ON a.id = t.agency_id ORDER BY t.due_at ASC`).all<TaskRecord>();
-  return result.results;
-}
-
-export async function addTask(task: TaskRecord) {
-  await ensureDatabase();
-  await database().prepare(`INSERT INTO tasks (id, agency_id, title, description, assigned_to, due_at, priority, status,
-    activity_type, notes, completed_at, created_at, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-    .bind(task.id, task.agencyId, task.title, task.description, task.assignedTo, task.dueAt, task.priority, task.status,
-      task.activityType, task.notes, task.completedAt, task.createdAt, task.createdBy).run();
-  await database().prepare("UPDATE agencies SET next_follow_up_at=? WHERE id=?").bind(task.dueAt, task.agencyId).run();
-  return task;
-}
-
-export async function updateTask(id: string, status: TaskRecord["status"], completedAt: string | null) {
-  await ensureDatabase();
-  await database().prepare("UPDATE tasks SET status=?, completed_at=? WHERE id=?").bind(status, completedAt, id).run();
-  return database().prepare("SELECT t.id, t.agency_id AS agencyId, t.title, t.description, t.assigned_to AS assignedTo, t.due_at AS dueAt, t.priority, t.status, t.activity_type AS activityType, t.notes, t.completed_at AS completedAt, t.created_at AS createdAt, t.created_by AS createdBy, a.trade_name AS agencyName, a.city AS agencyCity FROM tasks t JOIN agencies a ON a.id=t.agency_id WHERE t.id=?").bind(id).first<TaskRecord>();
-}
-
-export async function getCommercialSummary() {
-  await ensureDatabase();
-  const [contacts, tasks] = await Promise.all([listAllContacts(), listTasks()]);
-  return { contacts, tasks };
-}
-
-export type GithubSessionRecord = {
-  sessionId: string;
-  githubId: string;
-  login: string;
-  displayName: string;
-  email: string | null;
-  avatarUrl: string | null;
-  createdAt: string;
-  expiresAt: string;
-};
-
-export async function saveGithubSession(session: GithubSessionRecord) {
-  await ensureDatabase();
-  await database().prepare(`INSERT INTO github_sessions
-    (session_id, github_id, login, display_name, email, avatar_url, created_at, expires_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(session_id) DO UPDATE SET github_id=excluded.github_id, login=excluded.login,
-    display_name=excluded.display_name, email=excluded.email, avatar_url=excluded.avatar_url,
-    created_at=excluded.created_at, expires_at=excluded.expires_at`)
-    .bind(session.sessionId, session.githubId, session.login, session.displayName, session.email, session.avatarUrl, session.createdAt, session.expiresAt).run();
-  return session;
-}
-
-export async function getGithubSession(sessionId: string) {
-  await ensureDatabase();
-  const row = await database().prepare(`SELECT session_id AS sessionId, github_id AS githubId,
-    login, display_name AS displayName, email, avatar_url AS avatarUrl,
-    created_at AS createdAt, expires_at AS expiresAt FROM github_sessions WHERE session_id = ?`)
-    .bind(sessionId).first<GithubSessionRecord>();
-  if (!row) return null;
-  if (new Date(row.expiresAt).getTime() <= Date.now()) {
-    await deleteGithubSession(sessionId);
-    return null;
-  }
-  return row;
-}
-
-export async function deleteGithubSession(sessionId: string) {
-  await ensureDatabase();
-  await database().prepare("DELETE FROM github_sessions WHERE session_id = ?").bind(sessionId).run();
-}
+    compeÛ~º¶‰žËkºwµçEÝ…¥Ð‘…Ñ…‰…Í” ¤¹ÁÉ•Á…É”¡M1P¥°…•¹å}¥L…•¹å%°½¹Ñ…Ñ}‘…Ñ”L½¹Ñ…Ñ…Ñ”°(€€€¡…¹¹•°°½¹Ñ…Ñ}¹…µ”L½¹Ñ…Ñ9…µ”°ÍÕµµ…Éä°¹•áÑ}ÍÑ•ÀL¹•áÑMÑ•À°É•…Ñ•‘}…ÐLÉ•…Ñ•‘Ð°(€€€¥¹Ñ•É…Ñ¥½¹}ÑåÁ”L¥¹Ñ•É…Ñ¥½¹QåÁ”°½¹Ñ…Ñ}Ñ¥µ”L½¹Ñ…ÑQ¥µ”°É•ÍÕ±Ð°¹•áÑ}½¹Ñ…Ñ}…ÐL¹•áÑ½¹Ñ…ÑÐ°É•…Ñ•‘}‰äLÉ•…Ñ•‘	ä(€€€I=4½¹Ñ…ÑÌ=IH	d½¹Ñ…Ñ}‘…Ñ”M°É•…Ñ•‘}…ÐM€¤¹…±°ñ½¹Ñ…ÑI•½Éø ¤ì(€É•ÑÕÉ¸É•ÍÕ±Ð¹É•ÍÕ±ÑÌì)ô()•áÁ½ÉÐ…Íå¹Œ™Õ¹Ñ¥½¸…‘‘½¹Ñ…Ð¡½¹Ñ…Ðè½¹Ñ…ÑI•½É¤ì(€…Ý…¥Ð•¹ÍÕÉ•…Ñ…‰…Í” ¤ì(€…Ý…¥Ð‘…Ñ…‰…Í” ¤¹ÁÉ•Á…É”¡%9MIP%9Q<½¹Ñ…ÑÌ€¡¥°…•¹å}¥°½¹Ñ…Ñ}‘…Ñ”°¡…¹¹•°°½¹Ñ…Ñ}¹…µ”°ÍÕµµ…Éä°¹•áÑ}ÍÑ•À°É•…Ñ•‘}…Ð°(€€€¥¹Ñ•É…Ñ¥½¹}ÑåÁ”°½¹Ñ…Ñ}Ñ¥µ”°É•ÍÕ±Ð°¹•áÑ}½¹Ñ…Ñ}…Ð°É•…Ñ•‘}‰ä¤Y1UL€ ü°€ü°€ü°€ü°€ü°€ü°€ü°€ü°€ü°€ü°€ü°€ü°€ü¥€¤¹‰¥¹ (€€€€€½¹Ñ…Ð¹¥°½¹Ñ…Ð¹…•¹å%°½¹Ñ…Ð¹½¹Ñ…Ñ…Ñ”°½¹Ñ…Ð¹¡…¹¹•°°½¹Ñ…Ð¹½¹Ñ…Ñ9…µ”°½¹Ñ…Ð¹ÍÕµµ…Éä°½¹Ñ…Ð¹¹•áÑMÑ•À°½¹Ñ…Ð¹É•…Ñ•‘Ð°(€€€€€½¹Ñ…Ð¹¥¹Ñ•É…Ñ¥½¹QåÁ”€üü½¹Ñ…Ð¹¡…¹¹•°°½¹Ñ…Ð¹½¹Ñ…ÑQ¥µ”€üü¹Õ±°°½¹Ñ…Ð¹É•ÍÕ±Ð€üü¹Õ±°°½¹Ñ…Ð¹¹•áÑ½¹Ñ…ÑÐ€üü¹Õ±°°½¹Ñ…Ð¹É•…Ñ•‘	ä€üü¹Õ±°¤¹ÉÕ¸ ¤ì(€½¹ÍÐÕÉÉ•¹Ð€ô…Ý…¥Ð•Ñ•¹ä¡½¹Ñ…Ð¹…•¹å%¤ì(€½¹ÍÐ¹•áÑMÑ…ÑÕÌ€ôÕÉÉ•¹Ðü¹½µµ•É¥…±MÑ…ÑÕÌ€ôôô€‰;¼½¹Ñ…Ñ…‘„ˆ€ü€‰½¹Ñ…Ñ¼¥¹¥¥…‘¼ˆ€è€¡ÕÉÉ•¹Ðü¹½µµ•É¥…±MÑ…ÑÕÌ€üü€‰½¹Ñ…Ñ¼¥¹¥¥…‘¼ˆ¤ì(€…Ý…¥Ð‘…Ñ…‰…Í” ¤¹ÁÉ•Á…É”¡UAQ…•¹¥•ÌMP±…ÍÑ}½¹Ñ…Ñ}…Ðôü°™¥ÉÍÑ}½¹Ñ…Ñ}…Ðõ=1M¡™¥ÉÍÑ}½¹Ñ…Ñ}…Ð°€ü¤°(€€€½µµ•É¥…±}ÍÑ…ÑÕÌôü°½ÁÁ½ÉÑÕ¹¥Ñå}Í½É”ôü]!I¥ôý€¤¹‰¥¹¡½¹Ñ…Ð¹½¹Ñ…Ñ…Ñ”°½¹Ñ…Ð¹½¹Ñ…Ñ…Ñ”°¹•áÑMÑ…ÑÕÌ°(€€€€€…±Õ±…Ñ•=ÁÁ½ÉÑÕ¹¥ÑåM½É”¡ì€¸¸¹ÕÉÉ•¹Ð°½µµ•É¥…±MÑ…ÑÕÌè¹•áÑMÑ…ÑÕÌ°±…ÍÑ½¹Ñ…ÑÐè½¹Ñ…Ð¹½¹Ñ…Ñ…Ñ”ô¤°½¹Ñ…Ð¹…•¹å%¤¹ÉÕ¸ ¤ì(€É•ÑÕÉ¸½¹Ñ…Ðì)ô()•áÁ½ÉÐ…Íå¹Œ™Õ¹Ñ¥½¸…‘‘MÑ…ÑÕÍ!¥ÍÑ½Éä¡¥Ñ•´èMÑ…ÑÕÍ!¥ÍÑ½ÉåI•½É¤ì(€…Ý…¥Ð•¹ÍÕÉ•…Ñ…‰…Í” ¤ì(€…Ý…¥Ð‘…Ñ…‰…Í” ¤¹ÁÉ•Á…É”¡%9MIP%9Q<…•¹å}ÍÑ…ÑÕÍ}¡¥ÍÑ½Éä€¡¥°…•¹å}¥°ÁÉ•Ù¥½ÕÍ}ÍÑ…ÑÕÌ°¹•Ý}ÍÑ…ÑÕÌ°ÕÍ•É}•µ…¥°°¹½Ñ”°¡…¹•‘}…Ð¤(€€€Y1UL€ ü°€ü°€ü°€ü°€ü°€ü°€ü¥€¤¹‰¥¹¡¥Ñ•´¹¥°¥Ñ•´¹…•¹å%°¥Ñ•´¹ÁÉ•Ù¥½ÕÍMÑ…ÑÕÌ°¥Ñ•´¹¹•ÝMÑ…ÑÕÌ°¥Ñ•´¹ÕÍ•Éµ…¥°°¥Ñ•´¹¹½Ñ”°¥Ñ•´¹¡…¹•‘Ð¤¹ÉÕ¸ ¤ì(€É•ÑÕÉ¸¥Ñ•´ì)ô()•áÁ½ÉÐ…Íå¹Œ™Õ¹Ñ¥½¸±¥ÍÑMÑ…ÑÕÍ!¥ÍÑ½Éä¡…•¹å%èÍÑÉ¥¹œ¤ì(€…Ý…¥Ð•¹ÍÕÉ•…Ñ…‰…Í” ¤ì(€½¹ÍÐÉ•ÍÕ±Ð€ô…Ý…¥Ð‘…Ñ…‰…Í” ¤¹ÁÉ•Á…É”¡M1P¥°…•¹å}¥L…•¹å%°ÁÉ•Ù¥½ÕÍ}ÍÑ…ÑÕÌLÁÉ•Ù¥½ÕÍMÑ…ÑÕÌ°(€€€¹•Ý}ÍÑ…ÑÕÌL¹•ÝMÑ…ÑÕÌ°ÕÍ•É}•µ…¥°LÕÍ•Éµ…¥°°¹½Ñ”°¡…¹•‘}…ÐL¡…¹•‘Ð(€€€I=4…•¹å}ÍÑ…ÑÕÍ}¡¥ÍÑ½Éä]!I…•¹å}¥€ô€ü=IH	d¡…¹•‘}…ÐM€¤¹‰¥¹¡…•¹å%¤¹…±°ñMÑ…ÑÕÍ!¥ÍÑ½ÉåI•½Éø ¤ì(€É•ÑÕÉ¸É•ÍÕ±Ð¹É•ÍÕ±ÑÌì)ô()•áÁ½ÉÐ…Íå¹Œ™Õ¹Ñ¥½¸±¥ÍÑQ…Í­Ì ¤ì(€…Ý…¥Ð•¹ÍÕÉ•…Ñ…‰…Í” ¤ì(€½¹ÍÐÉ•ÍÕ±Ð€ô…Ý…¥Ð‘…Ñ…‰…Í” ¤¹ÁÉ•Á…É”¡M1PÐ¹¥°Ð¹…•¹å}¥L…•¹å%°Ð¹Ñ¥Ñ±”°Ð¹‘•ÍÉ¥ÁÑ¥½¸°(€€€Ð¹…ÍÍ¥¹•‘}Ñ¼L…ÍÍ¥¹•‘Q¼°Ð¹‘Õ•}…ÐL‘Õ•Ð°Ð¹ÁÉ¥½É¥Ñä°Ð¹ÍÑ…ÑÕÌ°Ð¹…Ñ¥Ù¥Ñå}ÑåÁ”L…Ñ¥Ù¥ÑåQåÁ”°(€€€Ð¹¹½Ñ•Ì°Ð¹½µÁ±•Ñ•‘}…ÐL½µÁ±•Ñ•‘Ð°Ð¹É•…Ñ•‘}…ÐLÉ•…Ñ•‘Ð°Ð¹É•…Ñ•‘}‰äLÉ•…Ñ•‘	ä°(€€€„¹ÑÉ…‘•}¹…µ”L…•¹å9…µ”°„¹¥ÑäL…•¹å¥Ñä(€€€I=4Ñ…Í­ÌÐ)=%8…•¹¥•Ì„=8„¹¥€ôÐ¹…•¹å}¥=IH	dÐ¹‘Õ•}…ÐM€¤¹…±°ñQ…Í­I•½Éø ¤ì(€É•ÑÕÉ¸É•ÍÕ±Ð¹É•ÍÕ±ÑÌì)ô()•áÁ½ÉÐ…Íå¹Œ™Õ¹Ñ¥½¸…‘‘Q…Í¬¡Ñ…Í¬èQ…Í­I•½É¤ì(€…Ý…¥Ð•¹ÍÕÉ•…Ñ…‰…Í” ¤ì(€…Ý…¥Ð‘…Ñ…‰…Í” ¤¹ÁÉ•Á…É”¡%9MIP%9Q<Ñ…Í­Ì€¡¥°…•¹å}¥°Ñ¥Ñ±”°‘•ÍÉ¥ÁÑ¥½¸°…ÍÍ¥¹•‘}Ñ¼°‘Õ•}…Ð°ÁÉ¥½É¥Ñä°ÍÑ…ÑÕÌ°(€€€…Ñ¥Ù¥Ñå}ÑåÁ”°¹½Ñ•Ì°½µÁ±•Ñ•‘}…Ð°É•…Ñ•‘}…Ð°É•…Ñ•‘}‰ä¤Y1UL€ ü°€ü°€ü°€ü°€ü°€ü°€ü°€ü°€ü°€ü°€ü°€ü°€ü¥€¤(€€€€¹‰¥¹¡Ñ…Í¬¹¥°Ñ…Í¬¹…•¹å%°Ñ…Í¬¹Ñ¥Ñ±”°Ñ…Í¬¹‘•ÍÉ¥ÁÑ¥½¸°Ñ…Í¬¹…ÍÍ¥¹•‘Q¼°Ñ…Í¬¹‘Õ•Ð°Ñ…Í¬¹ÁÉ¥½É¥Ñä°Ñ…Í¬¹ÍÑ…ÑÕÌ°(€€€€€Ñ…Í¬¹…Ñ¥Ù¥ÑåQåÁ”°Ñ…Í¬¹¹½Ñ•Ì°Ñ…Í¬¹½µÁ±•Ñ•‘Ð°Ñ…Í¬¹É•…Ñ•‘Ð°Ñ…Í¬¹É•…Ñ•‘	ä¤¹ÉÕ¸ ¤ì(€…Ý…¥Ð‘…Ñ…‰…Í” ¤¹ÁÉ•Á…É” ‰UAQ…•¹¥•ÌMP¹•áÑ}™½±±½Ý}ÕÁ}…Ðôü]!I¥ôüˆ¤¹‰¥¹¡Ñ…Í¬¹‘Õ•Ð°Ñ…Í¬¹…•¹å%¤¹ÉÕ¸ ¤ì(€É•ÑÕÉ¸Ñ…Í¬ì)ô()•áÁ½ÉÐ…Íå¹Œ™Õ¹Ñ¥½¸ÕÁ‘…Ñ•Q…Í¬¡¥èÍÑÉ¥¹œ°ÍÑ…ÑÕÌèQ…Í­I•½É‘l‰ÍÑ…ÑÕÌ‰t°½µÁ±•Ñ•‘ÐèÍÑÉ¥¹œð¹Õ±°¤ì(€…Ý…¥Ð•¹ÍÕÉ•…Ñ…‰…Í” ¤ì(€…Ý…¥Ð‘…Ñ…‰…Í” ¤¹ÁÉ•Á…É” ‰UAQÑ…Í­ÌMPÍÑ…ÑÕÌôü°½µÁ±•Ñ•‘}…Ðôü]!I¥ôüˆ¤¹‰¥¹¡ÍÑ…ÑÕÌ°½µÁ±•Ñ•‘Ð°¥¤¹ÉÕ¸ ¤ì(€É•ÑÕÉ¸‘…Ñ…‰…Í” ¤¹ÁÉ•Á…É” ‰M1PÐ¹¥°Ð¹…•¹å}¥L…•¹å%°Ð¹Ñ¥Ñ±”°Ð¹‘•ÍÉ¥ÁÑ¥½¸°Ð¹…ÍÍ¥¹•‘}Ñ¼L…ÍÍ¥¹•‘Q¼°Ð¹‘Õ•}…ÐL‘Õ•Ð°Ð¹ÁÉ¥½É¥Ñä°Ð¹ÍÑ…ÑÕÌ°Ð¹…Ñ¥Ù¥Ñå}ÑåÁ”L…Ñ¥Ù¥ÑåQåÁ”°Ð¹¹½Ñ•Ì°Ð¹½µÁ±•Ñ•‘}…ÐL½µÁ±•Ñ•‘Ð°Ð¹É•…Ñ•‘}…ÐLÉ•…Ñ•‘Ð°Ð¹É•…Ñ•‘}‰äLÉ•…Ñ•‘	ä°„¹ÑÉ…‘•}¹…µ”L…•¹å9…µ”°„¹¥ÑäL…•¹å¥ÑäI=4Ñ…Í­ÌÐ)=%8…•¹¥•Ì„=8„¹¥õÐ¹…•¹å}¥]!IÐ¹¥ôüˆ¤¹‰¥¹¡¥¤¹™¥ÉÍÐñQ…Í­I•½Éø ¤ì)ô()•áÁ½ÉÐ…Íå¹Œ™Õ¹Ñ¥½¸•Ñ½µµ•É¥…±MÕµµ…Éä ¤ì(€…Ý…¥Ð•¹ÍÕÉ•…Ñ…‰…Í” ¤ì(€½¹ÍÐm½¹Ñ…ÑÌ°Ñ…Í­Ít€ô…Ý…¥ÐAÉ½µ¥Í”¹…±°¡m±¥ÍÑ±±½¹Ñ…ÑÌ ¤°±¥ÍÑQ…Í­Ì ¥t¤ì(€É•ÑÕÉ¸ì½¹Ñ…ÑÌ°Ñ…Í­Ìôì)ô()•áÁ½ÉÐÑåÁ”¥Ñ¡Õ‰M•ÍÍ¥½¹I•½É€ôì(€Í•ÍÍ¥½¹%èÍÑÉ¥¹œì(€¥Ñ¡Õ‰%èÍÑÉ¥¹œì(€±½¥¸èÍÑÉ¥¹œì(€‘¥ÍÁ±…å9…µ”èÍÑÉ¥¹œì(€•µ…¥°èÍÑÉ¥¹œð¹Õ±°ì(€…Ù…Ñ…ÉUÉ°èÍÑÉ¥¹œð¹Õ±°ì(€É•…Ñ•‘ÐèÍÑÉ¥¹œì(€•áÁ¥É•ÍÐèÍÑÉ¥¹œì)ôì()•áÁ½ÉÐ…Íå¹Œ™Õ¹Ñ¥½¸Í…Ù•¥Ñ¡Õ‰M•ÍÍ¥½¸¡Í•ÍÍ¥½¸è¥Ñ¡Õ‰M•ÍÍ¥½¹I•½É¤ì(€…Ý…¥Ð•¹ÍÕÉ•…Ñ…‰…Í” ¤ì(€…Ý…¥Ð‘…Ñ…‰…Í” ¤¹ÁÉ•Á…É”¡%9MIP%9Q<¥Ñ¡Õ‰}Í•ÍÍ¥½¹Ì(€€€€¡Í•ÍÍ¥½¹}¥°¥Ñ¡Õ‰}¥°±½¥¸°‘¥ÍÁ±…å}¹…µ”°•µ…¥°°…Ù…Ñ…É}ÕÉ°°É•…Ñ•‘}…Ð°•áÁ¥É•Í}…Ð¤(€€€Y1UL€ ü°€ü°€ü°€ü°€ü°€ü°€ü°€ü¤(€€€=8=91%P¡Í•ÍÍ¥½¹}¥¤<UAQMP¥Ñ¡Õ‰}¥õ•á±Õ‘•¹¥Ñ¡Õ‰}¥°±½¥¸õ•á±Õ‘•¹±½¥¸°(€€€‘¥ÍÁ±…å}¹…µ”õ•á±Õ‘•¹‘¥ÍÁ±…å}¹…µ”°•µ…¥°õ•á±Õ‘•¹•µ…¥°°…Ù…Ñ…É}ÕÉ°õ•á±Õ‘•¹…Ù…Ñ…É}ÕÉ°°(€€€É•…Ñ•‘}…Ðõ•á±Õ‘•¹É•…Ñ•‘}…Ð°•áÁ¥É•Í}…Ðõ•á±Õ‘•¹•áÁ¥É•Í}…Ñ€¤(€€€€¹‰¥¹¡Í•ÍÍ¥½¸¹Í•ÍÍ¥½¹%°Í•ÍÍ¥½¸¹¥Ñ¡Õ‰%°Í•ÍÍ¥½¸¹±½¥¸°Í•ÍÍ¥½¸¹‘¥ÍÁ±…å9…µ”°Í•ÍÍ¥½¸¹•µ…¥°°Í•ÍÍ¥½¸¹…Ù…Ñ…ÉUÉ°°Í•ÍÍ¥½¸¹É•…Ñ•‘Ð°Í•ÍÍ¥½¸¹•áÁ¥É•ÍÐ¤¹ÉÕ¸ ¤ì(€É•ÑÕÉ¸Í•ÍÍ¥½¸ì)ô()•áÁ½ÉÐ…Íå¹Œ™Õ¹Ñ¥½¸•Ñ¥Ñ¡Õ‰M•ÍÍ¥½¸¡Í•ÍÍ¥½¹%èÍÑÉ¥¹œ¤ì(€…Ý…¥Ð•¹ÍÕÉ•…Ñ…‰…Í” ¤ì(€½¹ÍÐÉ½Ü€ô…Ý…¥Ð‘…Ñ…‰…Í” ¤¹ÁÉ•Á…É”¡M1PÍ•ÍÍ¥½¹}¥LÍ•ÍÍ¥½¹%°¥Ñ¡Õ‰}¥L¥Ñ¡Õ‰%°(€€€±½¥¸°‘¥ÍÁ±…å}¹…µ”L‘¥ÍÁ±…å9…µ”°•µ…¥°°…Ù…Ñ…É}ÕÉ°L…Ù…Ñ…ÉUÉ°°(€€€É•…Ñ•‘}…ÐLÉ•…Ñ•‘Ð°•áÁ¥É•Í}…ÐL•áÁ¥É•ÍÐI=4¥Ñ¡Õ‰}Í•ÍÍ¥½¹Ì]!IÍ•ÍÍ¥½¹}¥€ô€ý€¤(€€€€¹‰¥¹¡Í•ÍÍ¥½¹%¤¹™¥ÉÍÐñ¥Ñ¡Õ‰M•ÍÍ¥½¹I•½Éø ¤ì(€¥˜€ …É½Ü¤É•ÑÕÉ¸¹Õ±°ì(€¥˜€¡¹•Ü…Ñ”¡É½Ü¹•áÁ¥É•ÍÐ¤¹•ÑQ¥µ” ¤€ðô…Ñ”¹¹½Ü ¤¤ì(€€€…Ý…¥Ð‘•±•Ñ•¥Ñ¡Õ‰M•ÍÍ¥½¸¡Í•ÍÍ¥½¹%¤ì(€€€É•ÑÕÉ¸¹Õ±°ì(€ô(€É•ÑÕÉ¸É½Üì)ô()•áÁ½ÉÐ…Íå¹Œ™Õ¹Ñ¥½¸‘•±•Ñ•¥Ñ¡Õ‰M•ÍÍ¥½¸¡Í•ÍÍ¥½¹%èÍÑÉ¥¹œ¤ì(€…Ý…¥Ð•¹ÍÕÉ•…Ñ…‰…Í” ¤ì(€…Ý…¥Ð‘…Ñ…‰…Í” ¤¹ÁÉ•Á…É” ‰1QI=4¥Ñ¡Õ‰}Í•ÍÍ¥½¹Ì]!IÍ•ÍÍ¥½¹}¥€ô€üˆ¤¹‰¥¹¡Í•ÍÍ¥½¹%¤¹ÉÕ¸ ¤ì)ô()™Õ¹Ñ¥½¸Á…ÉÍ•MÑÉ¥¹1¥ÍÐ¡Ù…±Õ”èÕ¹­¹½Ý¸¤èÍÑÉ¥¹mtì(€ÑÉäì(€€€½¹ÍÐÁ…ÉÍ•€ô)M=8¹Á…ÉÍ”¡MÑÉ¥¹œ¡Ù…±Õ”€üü€‰mtˆ¤¤ì(€€€É•ÑÕÉ¸ÉÉ…ä¹¥ÍÉÉ…ä¡Á…ÉÍ•¤€üÁ…ÉÍ•¹µ…À¡MÑÉ¥¹œ¤€èmtì(€ô…Ñ ì(€€€É•ÑÕÉ¸mtì(€ô)ô()•áÁ½ÉÐ…Íå¹Œ™Õ¹Ñ¥½¸…‘‘1•…¡±•…è1•…‘I•½É¤ì(€…Ý…¥Ð•¹ÍÕÉ•…Ñ…‰…Í” ¤ì(€…Ý…¥Ð‘…Ñ…‰…Í” ¤¹ÁÉ•Á…É”¡%9MIP%9Q<±•…‘Ì€ (€€€¥°¹…µ”°Ý¡…ÑÍ…ÁÀ°•µ…¥°°¥Ñä°‘•ÍÑ¥¹…Ñ¥½¸°•á¡…¹•}ÑåÁ”°‰Õ‘•Ñ}É…¹”°ÑÉ…Ù•±}‘…Ñ”°(€€€‘ÕÉ…Ñ¥½¸°ÑÉ…Ù•±•É}…”°¹½Ñ•Ì°½¹Í•¹Ð°Í½ÕÉ”°ÍÑ…ÑÕÌ°…ÍÍ¥¹•‘}Ñ¼°µ…Ñ¡•‘}…•¹å}¥‘Ì°É•…Ñ•‘}…Ð°ÕÁ‘…Ñ•‘}…Ð(€€¤Y1UL€ ü°€ü°€ü°€ü°€ü°€ü°€ü°€ü°€ü°€ü°€ü°€ü°€ü°€ü°€ü°€ü°€ü°€ü°€ü¥€¤(€€€€¹‰¥¹¡±•…¹¥°±•…¹¹…µ”°±•…¹Ý¡…ÑÍ…ÁÀ°±•…¹•µ…¥°°±•…¹¥Ñä°±•…¹‘•ÍÑ¥¹…Ñ¥½¸°±•…¹•á¡…¹•QåÁ”°(€€€€€±•…¹‰Õ‘•ÑI…¹”°±•…¹ÑÉ…Ù•±…Ñ”°±•…¹‘ÕÉ…Ñ¥½¸°±•…¹ÑÉ…Ù•±•É”°±•…¹¹½Ñ•Ì°±•…¹½¹Í•¹Ð€ü€Ä€è€À°(€€€€€±•…¹Í½ÕÉ”°±•…¹ÍÑ…ÑÕÌ°±•…¹…ÍÍ¥¹•‘Q¼°)M=8¹ÍÑÉ¥¹¥™ä¡±•…¹µ…Ñ¡•‘•¹å%‘Ì¤°±•…¹É•…Ñ•‘Ð°±•…¹ÕÁ‘…Ñ•‘Ð¤¹ÉÕ¸ ¤ì(€É•ÑÕÉ¸±•…ì)ô()•áÁ½ÉÐ…Íå¹Œ™Õ¹Ñ¥½¸±¥ÍÑ1•…‘Ì ¤ì(€…Ý…¥Ð•¹ÍÕÉ•…Ñ…‰…Í” ¤ì(€½¹ÍÐÉ•ÍÕ±Ð€ô…Ý…¥Ð‘…Ñ…‰…Í” ¤¹ÁÉ•Á…É”¡M1P¥°¹…µ”°Ý¡…ÑÍ…ÁÀ°•µ…¥°°¥Ñä°‘•ÍÑ¥¹…Ñ¥½¸°(€€€•á¡…¹•}ÑåÁ”L•á¡…¹•QåÁ”°‰Õ‘•Ñ}É…¹”L‰Õ‘•ÑI…¹”°ÑÉ…Ù•±}‘…Ñ”LÑÉ…Ù•±…Ñ”°(€€€‘ÕÉ…Ñ¥½¸°ÑÉ…Ù•±•É}…”LÑÉ…Ù•±•É”°¹½Ñ•Ì°½¹Í•¹Ð°Í½ÕÉ”°ÍÑ…ÑÕÌ°…ÍÍ¥¹•‘}Ñ¼L…ÍÍ¥¹•‘Q¼°(€€€µ…Ñ¡•‘}…•¹å}¥‘ÌLµ…Ñ¡•‘•¹å%‘Ì°É•…Ñ•‘}…ÐLÉ•…Ñ•‘Ð°ÕÁ‘…Ñ•‘}…ÐLÕÁ‘…Ñ•‘Ð(€€€I=4±•…‘Ì=IH	dÉ•…Ñ•‘}…ÐM€¤¹…±°ñI•½ÉñÍÑÉ¥¹œ°Õ¹­¹½Ý¸øø ¤ì(€É•ÑÕÉ¸É•ÍÕ±Ð¹É•ÍÕ±ÑÌ¹µ…À ¡É½Ü¤€ôø€¡ì(€€€€¸¸¹É½Ü°(€€€½¹Í•¹Ðè	½½±•…¸¡É½Ü¹½¹Í•¹Ð¤°(€€€ÑÉ…Ù•±•É”èÉ½Ü¹ÑÉ…Ù•±•É”€ôô¹Õ±°€ü¹Õ±°€è9Õµ‰•È¡É½Ü¹ÑÉ…Ù•±•É”¤°(€€€µ…Ñ¡•‘•¹å%‘ÌèÁ…ÉÍ•MÑÉ¥¹1¥ÍÐ¡É½Ü¹µ…Ñ¡•‘•¹å%‘Ì¤°(€ô¤¤…Ì1•…‘I•½É‘mtì)ô()•áÁ½ÉÐ…Íå¹Œ™Õ¹Ñ¥½¸ÕÁ‘…Ñ•1•…¡¥èÍÑÉ¥¹œ°™¥•±‘ÌèA¥¬ñ1•…‘I•½É°€‰ÍÑ…ÑÕÌˆð€‰…ÍÍ¥¹•‘Q¼ˆø¤ì(€…Ý…¥Ð•¹ÍÕÉ•…Ñ…‰…Í” ¤ì(€½¹ÍÐ¹½Ü€ô¹•Ü…Ñ” ¤¹Ñ½%M=MÑÉ¥¹œ ¤ì(€…Ý…¥Ð‘…Ñ…‰…Í” ¤¹ÁÉ•Á…É” ‰UAQ±•…‘ÌMPÍÑ…ÑÕÌôü°…ÍÍ¥¹•‘}Ñ¼ôü°ÕÁ‘…Ñ•‘}…Ðôü]!I¥ôüˆ¤(€€€€¹‰¥¹¡™¥•±‘Ì¹ÍÑ…ÑÕÌ°™¥•±‘Ì¹…ÍÍ¥¹•‘Q¼°¹½Ü°¥¤¹ÉÕ¸ ¤ì(€½¹ÍÐÉ½ÝÌ€ô…Ý…¥Ð±¥ÍÑ1•…‘Ì ¤ì(€É•ÑÕÉ¸É½ÝÌ¹™¥¹ ¡É½Ü¤€ôøÉ½Ü¹¥€ôôô¥¤€üü¹Õ±°ì)ô()•áÁ½ÉÐ…Íå¹Œ™Õ¹Ñ¥½¸±¥ÍÑ5•ÍÍ…•Q•µÁ±…Ñ•Ì¡¥¹±Õ‘•%¹…Ñ¥Ù”€ô™…±Í”¤ì(€…Ý…¥Ð•¹ÍÕÉ•…Ñ…‰…Í” ¤ì(€½¹ÍÐÉ•ÍÕ±Ð€ô…Ý…¥Ð‘…Ñ…‰…Í” ¤¹ÁÉ•Á…É”¡M1P¥°¹…µ”°…Ñ•½Éä°‰½‘ä°…Ñ¥Ù”°(€€€É•…Ñ•‘}‰äLÉ•…Ñ•‘	ä°É•…Ñ•‘}…ÐLÉ•…Ñ•‘Ð°ÕÁ‘…Ñ•‘}…ÐLÕÁ‘…Ñ•‘Ð(€€€I=4µ•ÍÍ…•}Ñ•µÁ±…Ñ•Ì€‘í¥¹±Õ‘•%¹…Ñ¥Ù”€ü€ˆˆ€è€‰]!I…Ñ¥Ù”€ô€Ä‰ô=IH	d…Ñ•½Éä°¹…µ•€¤¹…±°ñ=µ¥Ðñ5•ÍÍ…•Q•µÁ±…Ñ”°€‰…Ñ¥Ù”ˆø€˜ì…Ñ¥Ù”è¹Õµ‰•Èôø ¤ì(€É•ÑÕÉ¸É•ÍÕ±Ð¹É•ÍÕ±ÑÌ¹µ…À ¡É½Ü¤€ôø€¡ì€¸¸¹É½Ü°…Ñ¥Ù”è	½½±•…¸¡É½Ü¹…Ñ¥Ù”¤ô¤¤ì)ô()•áÁ½ÉÐ…Íå¹Œ™Õ¹Ñ¥½¸Í…Ù•5•ÍÍ…•Q•µÁ±…Ñ”¡Ñ•µÁ±…Ñ”è5•ÍÍ…•Q•µÁ±…Ñ”¤ì(€…Ý…¥Ð•¹ÍÕÉ•…Ñ…‰…Í” ¤ì(€…Ý…¥Ð‘…Ñ…‰…Í” ¤¹ÁÉ•Á…É”¡%9MIP%9Q<µ•ÍÍ…•}Ñ•µÁ±…Ñ•Ì€¡¥°¹…µ”°…Ñ•½Éä°‰½‘ä°…Ñ¥Ù”°É•…Ñ•‘}‰ä°É•…Ñ•‘}…Ð°ÕÁ‘…Ñ•‘}…Ð¤(€€€Y1UL€ ü°€ü°€ü°€ü°€ü°€ü°€ü°€ü¤(€€€=8=91%P¡¥¤<UAQMP¹…µ”õ•á±Õ‘•¹¹…µ”°…Ñ•½Éäõ•á±Õ‘•¹…Ñ•½Éä°‰½‘äõ•á±Õ‘•¹‰½‘ä°(€€€…Ñ¥Ù”õ•á±Õ‘•¹…Ñ¥Ù”°ÕÁ‘…Ñ•‘}…Ðõ•á±Õ‘•¹ÕÁ‘…Ñ•‘}…Ñ€¤¹‰¥¹ (€€€€€Ñ•µÁ±…Ñ”¹¥°Ñ•µÁ±…Ñ”¹¹…µ”°Ñ•µÁ±…Ñ”¹…Ñ•½Éä°Ñ•µÁ±…Ñ”¹‰½‘ä°Ñ•µÁ±…Ñ”¹…Ñ¥Ù”€ü€Ä€è€À°(€€€€€Ñ•µÁ±…Ñ”¹É•…Ñ•‘	ä°Ñ•µÁ±…Ñ”¹É•…Ñ•‘Ð°Ñ•µÁ±…Ñ”¹ÕÁ‘…Ñ•‘Ð¤¹ÉÕ¸ ¤ì(€½¹ÍÐÉ½ÝÌ€ô…Ý…¥Ð±¥ÍÑ5•ÍÍ…•Q•µÁ±…Ñ•Ì¡ÑÉÕ”¤ì(€É•ÑÕÉ¸É½ÝÌ¹™¥¹ ¡É½Ü¤€ôøÉ½Ü¹¥€ôôôÑ•µÁ±…Ñ”¹¥¤€üü¹Õ±°ì)ô()•áÁ½ÉÐ…Íå¹Œ™Õ¹Ñ¥½¸‘•±•Ñ•5•ÍÍ…•Q•µÁ±…Ñ”¡¥èÍÑÉ¥¹œ¤ì(€…Ý…¥Ð•¹ÍÕÉ•…Ñ…‰…Í” ¤ì(€…Ý…¥Ð‘…Ñ…‰…Í” ¤¹ÁÉ•Á…É” ‰1QI=4µ•ÍÍ…•}Ñ•µÁ±…Ñ•Ì]!I¥ôüˆ¤¹‰¥¹¡¥¤¹ÉÕ¸ ¤ì)ô()•áÁ½ÉÐ…Íå¹Œ™Õ¹Ñ¥½¸•ÑUÍ•ÉI½±”¡ÕÍ•É-•äèÍÑÉ¥¹œ¤ì(€…Ý…¥Ð•¹ÍÕÉ•…Ñ…‰…Í” ¤ì(€É•ÑÕÉ¸‘…Ñ…‰…Í” ¤¹ÁÉ•Á…É”¡M1PÕÍ•É}­•äLÕÍ•É-•ä°±½¥¸°•µ…¥°°‘¥ÍÁ±…å}¹…µ”L‘¥ÍÁ±…å9…µ”°(€€€É½±”°…Ñ¥Ù”°É•…Ñ•‘}…ÐLÉ•…Ñ•‘Ð°ÕÁ‘…Ñ•‘}…ÐLÕÁ‘…Ñ•‘ÐI=4ÕÍ•É}É½±•Ì]!IÕÍ•É}­•äôý€¤¹‰¥¹¡ÕÍ•É-•ä¤¹™¥ÉÍÐñ=µ¥ÐñUÍ•ÉI½±•I•½É°€‰…Ñ¥Ù”ˆø€˜ì…Ñ¥Ù”è¹Õµ‰•Èôø ¤ì)ô()•áÁ½ÉÐ…Íå¹Œ™Õ¹Ñ¥½¸±¥ÍÑUÍ•ÉI½±•Ì ¤ì(€…Ý…¥Ð•¹ÍÕÉ•…Ñ…‰…Í” ¤ì(€½¹ÍÐÉ•ÍÕ±Ð€ô…Ý…¥Ð‘…Ñ…‰…Í” ¤¹ÁÉ•Á…É”¡M1PÕÍ•É}­•äLÕÍ•É-•ä°±½¥¸°•µ…¥°°‘¥ÍÁ±…å}¹…µ”L‘¥ÍÁ±…å9…µ”°(€€€É½±”°…Ñ¥Ù”°É•…Ñ•‘}…ÐLÉ•…Ñ•‘Ð°ÕÁ‘…Ñ•‘}…ÐLÕÁ‘…Ñ•‘ÐI=4ÕÍ•É}É½±•Ì=IH	d‘¥ÍÁ±…å}¹…µ•€¤¹…±°ñ=µ¥ÐñUÍ•ÉI½±•I•½É°€‰…Ñ¥Ù”ˆø€˜ì…Ñ¥Ù”è¹Õµ‰•Èôø ¤ì(€É•ÑÕÉ¸É•ÍÕ±Ð¹É•ÍÕ±ÑÌ¹µ…À ¡É½Ü¤€ôø€¡ì€¸¸¹É½Ü°…Ñ¥Ù”è	½½±•…¸¡É½Ü¹…Ñ¥Ù”¤ô¤¤ì)ô()•áÁ½ÉÐ…Íå¹Œ™Õ¹Ñ¥½¸Í…Ù•UÍ•ÉI½±”¡É•½ÉèUÍ•ÉI½±•I•½É¤ì(€…Ý…¥Ð•¹ÍÕÉ•…Ñ…‰…Í” ¤ì(€…Ý…¥Ð‘…Ñ…‰…Í” ¤¹ÁÉ•Á…É”¡%9MIP%9Q<ÕÍ•É}É½±•Ì€¡ÕÍ•É}­•ä°±½¥¸°•µ…¥°°‘¥ÍÁ±…å}¹…µ”°É½±”°…Ñ¥Ù”°É•…Ñ•‘}…Ð°ÕÁ‘…Ñ•‘}…Ð¤(€€€Y1UL€ ü°€ü°€ü°€ü°€ü°€ü°€ü°€ü¤(€€€=8=91%P¡ÕÍ•É}­•ä¤<UAQMP±½¥¸õ•á±Õ‘•¹±½¥¸°•µ…¥°õ•á±Õ‘•¹•µ…¥°°(€€€‘¥ÍÁ±…å}¹…µ”õ•á±Õ‘•¹‘¥ÍÁ±…å}¹…µ”°É½±”õ•á±Õ‘•¹É½±”°…Ñ¥Ù”õ•á±Õ‘•¹…Ñ¥Ù”°ÕÁ‘…Ñ•‘}…Ðõ•á±Õ‘•¹ÕÁ‘…Ñ•‘}…Ñ€¤¹‰¥¹ (€€€€€É•½É¹ÕÍ•É-•ä°É•½É¹±½¥¸°É•½É¹•µ…¥°°É•½É¹‘¥ÍÁ±…å9…µ”°É•½É¹É½±”°É•½É¹…Ñ¥Ù”€ü€Ä€è€À°(€€€€€É•½É¹É•…Ñ•‘Ð°É•½É¹ÕÁ‘…Ñ•‘Ð¤¹ÉÕ¸ ¤ì(€½¹ÍÐÍ…Ù•€ô…Ý…¥Ð•ÑUÍ•ÉI½±”¡É•½É¹ÕÍ•É-•ä¤ì(€É•ÑÕÉ¸Í…Ù•€üì€¸¸¹Í…Ù•°…Ñ¥Ù”è	½½±•…¸¡Í…Ù•¹…Ñ¥Ù”¤ô€è¹Õ±°ì)ô()•áÁ½ÉÐ…Íå¹Œ™Õ¹Ñ¥½¸…‘‘¹…±åÑ¥ÍÙ•¹Ð¡•Ù•¹Ðè¹…±åÑ¥ÍÙ•¹ÑI•½É¤ì(€…Ý…¥Ð•¹ÍÕÉ•…Ñ…‰…Í” ¤ì(€…Ý…¥Ð‘…Ñ…‰…Í” ¤¹ÁÉ•Á…É”¡%9MIP%9Q<…¹…±åÑ¥Í}•Ù•¹ÑÌ€¡¥°¹…µ”°Á…Ñ °…•¹å}¥°ÕÍ•É}•µ…¥°°µ•Ñ…‘…Ñ„°É•…Ñ•‘}…Ð¤(€€€Y1UL€ ü°€ü°€ü°€ü°€ü°€ü°€ü¥€¤¹‰¥¹¡•Ù•¹Ð¹¥°•Ù•¹Ð¹¹…µ”°•Ù•¹Ð¹Á…Ñ °•Ù•¹Ð¹…•¹å%°•Ù•¹Ð¹ÕÍ•Éµ…¥°°(€€€€€)M=8¹ÍÑÉ¥¹¥™ä¡•Ù•¹Ð¹µ•Ñ…‘…Ñ„€üüíô¤°•Ù•¹Ð¹É•…Ñ•‘Ð¤¹ÉÕ¸ ¤ì(€É•ÑÕÉ¸•Ù•¹Ðì)ô()•áÁ½ÉÐ…Íå¹Œ™Õ¹Ñ¥½¸ÍÕµµ…É¥é•¹…±åÑ¥Ì¡‘…åÌ€ô€ÌÀ¤ì(€…Ý…¥Ð•¹ÍÕÉ•…Ñ…‰…Í” ¤ì(€½¹ÍÐÍ¥¹”€ô¹•Ü…Ñ”¡…Ñ”¹¹½Ü ¤€´‘…åÌ€¨€àØÐÀÀÀÀÀ¤¹Ñ½%M=MÑÉ¥¹œ ¤ì(€½¹ÍÐÉ•ÍÕ±Ð€ô…Ý…¥Ð‘…Ñ…‰…Í” ¤¹ÁÉ•Á…É”¡M1P¹…µ”°=U9P ¨¤LÙ…±Õ”I=4…¹…±åÑ¥Í}•Ù•¹ÑÌ]!IÉ•…Ñ•‘}…Ð€øô€üI=U@	d¹…µ”=IH	dÙ…±Õ”M€¤¹‰¥¹¡Í¥¹”¤¹…±°ñì¹…µ”èÍÑÉ¥¹œìÙ…±Õ”è¹Õµ‰•Èôø ¤ì(€É•ÑÕÉ¸É•ÍÕ±Ð¹É•ÍÕ±ÑÌ¹µ…À ¡É½Ü¤€ôø€¡ì±…‰•°èÉ½Ü¹¹…µ”°Ù…±Õ”è9Õµ‰•È¡É½Ü¹Ù…±Õ”¤ô¤¤ì)ô()•áÁ½ÉÐ…Íå¹Œ™Õ¹Ñ¥½¸±¥ÍÑ•¹åA±…¹Ì¡¥¹±Õ‘•%¹…Ñ¥Ù”€ô™…±Í”¤ì(€…Ý…¥Ð•¹ÍÕÉ•…Ñ…‰…Í” ¤ì(€½¹ÍÐÉ•ÍÕ±Ð€ô…Ý…¥Ð‘…Ñ…‰…Í” ¤¹ÁÉ•Á…É”¡M1P¥°½‘”°¹…µ”°‘•ÍÉ¥ÁÑ¥½¸°µ½¹Ñ¡±å}ÁÉ¥”Lµ½¹Ñ¡±åAÉ¥”°™•…ÑÕÉ•Ì°…Ñ¥Ù”°(€€€É•…Ñ•‘}…ÐLÉ•…Ñ•‘Ð°ÕÁ‘…Ñ•‘}…ÐLÕÁ‘…Ñ•‘ÐI=4…•¹å}Á±…¹Ì€‘í¥¹±Õ‘•%¹…Ñ¥Ù”€ü€ˆˆ€è€‰]!I…Ñ¥Ù”€ô€Ä‰ô=IH	d¥‘€¤¹…±°ñI•½ÉñÍÑÉ¥¹œ°Õ¹­¹½Ý¸øø ¤ì(€É•ÑÕÉ¸É•ÍÕ±Ð¹É•ÍÕ±ÑÌ¹µ…À ¡É½Ü¤€ôø€¡ì€¸¸¹É½Ü°µ½¹Ñ¡±åAÉ¥”èÉ½Ü¹µ½¹Ñ¡±åAÉ¥”€ôô¹Õ±°€ü¹Õ±°€è9Õµ‰•È¡É½Ü¹µ½¹Ñ¡±åAÉ¥”¤°™•…ÑÕÉ•ÌèÁ…ÉÍ•MÑÉ¥¹1¥ÍÐ¡É½Ü¹™•…ÑÕÉ•Ì¤°…Ñ¥Ù”è	½½±•…¸¡É½Ü¹…Ñ¥Ù”¤ô¤¤…Ì•¹åA±…¹mtì)ô()•áÁ½ÉÐ…Íå¹Œ™Õ¹Ñ¥½¸Í…Ù••¹åA±…¸¡Á±…¸è•¹åA±…¸¤ì(€…Ý…¥Ð•¹ÍÕÉ•…Ñ…‰…Í” ¤ì(€…Ý…¥Ð‘…Ñ…‰…Í” ¤¹ÁÉ•Á…É”¡%9MIP%9Q<…•¹å}Á±…¹Ì€¡¥°½‘”°¹…µ”°‘•ÍÉ¥ÁÑ¥½¸°µ½¹Ñ¡±å}ÁÉ¥”°™•…ÑÕÉ•Ì°…Ñ¥Ù”°É•…Ñ•‘}…Ð°ÕÁ‘…Ñ•‘}…Ð¤(€€€Y1UL€ ü°€ü°€ü°€ü°€ü°€ü°€ü°€ü°€ü¤=8=91%P¡¥¤<UAQMP½‘”õ•á±Õ‘•¹½‘”°¹…µ”õ•á±Õ‘•¹¹…µ”°(€€€‘•ÍÉ¥ÁÑ¥½¸õ•á±Õ‘•¹‘•ÍÉ¥ÁÑ¥½¸°µ½¹Ñ¡±å}ÁÉ¥”õ•á±Õ‘•¹µ½¹Ñ¡±å}ÁÉ¥”°™•…ÑÕÉ•Ìõ•á±Õ‘•¹™•…ÑÕÉ•Ì°…Ñ¥Ù”õ•á±Õ‘•¹…Ñ¥Ù”°ÕÁ‘…Ñ•‘}…Ðõ•á±Õ‘•¹ÕÁ‘…Ñ•‘}…Ñ€¤(€€€€¹‰¥¹¡Á±…¸¹¥°Á±…¸¹½‘”°Á±…¸¹¹…µ”°Á±…¸¹‘•ÍÉ¥ÁÑ¥½¸°Á±…¸¹µ½¹Ñ¡±åAÉ¥”°)M=8¹ÍÑÉ¥¹¥™ä¡Á±…¸¹™•…ÑÕÉ•Ì¤°Á±…¸¹…Ñ¥Ù”€ü€Ä€è€À°Á±…¸¹É•…Ñ•‘Ð°Á±…¸¹ÕÁ‘…Ñ•‘Ð¤¹ÉÕ¸ ¤ì(€É•ÑÕÉ¸€¡…Ý…¥Ð±¥ÍÑ•¹åA±…¹Ì¡ÑÉÕ”¤¤¹™¥¹ ¡¥Ñ•´¤€ôø¥Ñ•´¹¥€ôôôÁ±…¸¹¥¤€üü¹Õ±°ì)ô()•áÁ½ÉÐ…Íå¹Œ™Õ¹Ñ¥½¸±¥ÍÑ•¹åMÕ‰ÍÉ¥ÁÑ¥½¹Ì ¤ì(€…Ý…¥Ð•¹ÍÕÉ•…Ñ…‰…Í” ¤ì(€½¹ÍÐÉ•ÍÕ±Ð€ô…Ý…¥Ð‘…Ñ…‰…Í” ¤¹ÁÉ•Á…É”¡M1PÌ¹¥°Ì¹…•¹å}¥L…•¹å%°Ì¹Á±…¹}¥LÁ±…¹%°Ì¹ÍÑ…ÑÕÌ°(€€€Ì¹ÍÑ…ÉÑ•‘}…ÐLÍÑ…ÉÑ•‘Ð°Ì¹•¹‘Í}…ÐL•¹‘ÍÐ°Ì¹•áÑ•É¹…±}ÕÍÑ½µ•É}¥L•áÑ•É¹…±ÕÍÑ½µ•É%°(€€€Ì¹É•…Ñ•‘}…ÐLÉ•…Ñ•‘Ð°Ì¹ÕÁ‘…Ñ•‘}…ÐLÕÁ‘…Ñ•‘Ð°„¹ÑÉ…‘•}¹…µ”L…•¹å9…µ”°À¹¹…µ”LÁ±…¹9…µ”(€€€I=4…•¹å}ÍÕ‰ÍÉ¥ÁÑ¥½¹ÌÌ)=%8…•¹¥•Ì„=8„¹¥õÌ¹…•¹å}¥)=%8…•¹å}Á±…¹ÌÀ=8À¹¥õÌ¹Á±…¹}¥=IH	dÌ¹ÕÁ‘…Ñ•‘}…ÐM€¤¹…±°ñ•¹åMÕ‰ÍÉ¥ÁÑ¥½¸ø ¤ì(€É•ÑÕÉ¸É•ÍÕ±Ð¹É•ÍÕ±ÑÌì)ô()•áÁ½ÉÐ…Íå¹Œ™Õ¹Ñ¥½¸Í…Ù••¹åMÕ‰ÍÉ¥ÁÑ¥½¸¡ÍÕ‰ÍÉ¥ÁÑ¥½¸è•¹åMÕ‰ÍÉ¥ÁÑ¥½¸¤ì(€…Ý…¥Ð•¹ÍÕÉ•…Ñ…‰…Í” ¤ì(€…Ý…¥Ð‘…Ñ…‰…Í” ¤¹ÁÉ•Á…É”¡%9MIP%9Q<…•¹å}ÍÕ‰ÍÉ¥ÁÑ¥½¹Ì€¡¥°…•¹å}¥°Á±…¹}¥°ÍÑ…ÑÕÌ°ÍÑ…ÉÑ•‘}…Ð°•¹‘Í}…Ð°•áÑ•É¹…±}ÕÍÑ½µ•É}¥°É•…Ñ•‘}…Ð°ÕÁ‘…Ñ•‘}…Ð¤(€€€Y1UL€ ü°€ü°€ü°€ü°€ü°€ü°€ü°€ü°€ü¤=8=91%P¡¥¤<UAQMPÁ±…¹}¥õ•á±Õ‘•¹Á±…¹}¥°ÍÑ…ÑÕÌõ•á±Õ‘•¹ÍÑ…ÑÕÌ°(€€€ÍÑ…ÉÑ•‘}…Ðõ•á±Õ‘•¹ÍÑ…ÉÑ•‘}…Ð°•¹‘Í}…Ðõ•á±Õ‘•¹•¹‘Í}…Ð°•áÑ•É¹…±}ÕÍÑ½µ•É}¥õ•á±Õ‘•¹•áÑ•É¹…±}ÕÍÑ½µ•É}¥°ÕÁ‘…Ñ•‘}…Ðõ•á±Õ‘•¹ÕÁ‘…Ñ•‘}…Ñ€¤(€€€€¹‰¥¹¡ÍÕ‰ÍÉ¥ÁÑ¥½¸¹¥°ÍÕ‰ÍÉ¥ÁÑ¥½¸¹…•¹å%°ÍÕ‰ÍÉ¥ÁÑ¥½¸¹Á±…¹%°ÍÕ‰ÍÉ¥ÁÑ¥½¸¹ÍÑ…ÑÕÌ°ÍÕ‰ÍÉ¥ÁÑ¥½¸¹ÍÑ…ÉÑ•‘Ð°ÍÕ‰ÍÉ¥ÁÑ¥½¸¹•¹‘ÍÐ°ÍÕ‰ÍÉ¥ÁÑ¥½¸¹•áÑ•É¹…±ÕÍÑ½µ•É%°ÍÕ‰ÍÉ¥ÁÑ¥½¸¹É•…Ñ•‘Ð°ÍÕ‰ÍÉ¥ÁÑ¥½¸¹ÕÁ‘…Ñ•‘Ð¤¹ÉÕ¸ ¤ì(€É•ÑÕÉ¸€¡…Ý…¥Ð±¥ÍÑ•¹åMÕ‰ÍÉ¥ÁÑ¥½¹Ì ¤¤¹™¥¹ ¡¥Ñ•´¤€ôø¥Ñ•´¹¥€ôôôÍÕ‰ÍÉ¥ÁÑ¥½¸¹¥¤€üü¹Õ±°ì)ô(

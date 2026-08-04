@@ -15,6 +15,9 @@ export const commercialStatuses = [
 export type CommercialStatus = (typeof commercialStatuses)[number];
 export type TaskPriority = "Baixa" | "Média" | "Alta" | "Urgente";
 export type TaskStatus = "Aberta" | "Concluída" | "Cancelada";
+export type UserRole = "admin" | "gestor" | "vendedor" | "consulta";
+
+export const userRoles: UserRole[] = ["admin", "gestor", "vendedor", "consulta"];
 
 export interface Agency {
   id: string;
@@ -204,4 +207,103 @@ export interface RegionalResponse {
   regions: RegionalGroup[];
   cities: string[];
   availableRegions: string[];
+}
+
+export interface LeadRecord {
+  id: string;
+  name: string;
+  whatsapp: string;
+  email: string;
+  city: string;
+  destination: string;
+  exchangeType: string;
+  budgetRange: string | null;
+  travelDate: string | null;
+  duration: string | null;
+  travelerAge: number | null;
+  notes: string | null;
+  consent: boolean;
+  source: string;
+  status: "Novo" | "Em atendimento" | "Distribuído" | "Convertido" | "Arquivado";
+  assignedTo: string | null;
+  matchedAgencyIds: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type TemplateCategory =
+  | "Primeiro contato por WhatsApp"
+  | "Primeiro contato por e-mail"
+  | "Apresentação comercial"
+  | "Follow-up"
+  | "Reunião"
+  | "Proposta enviada"
+  | "Retomada de contato"
+  | "Agência sem retorno"
+  | "Pós-reunião"
+  | "Fechamento";
+
+export const templateCategories: TemplateCategory[] = [
+  "Primeiro contato por WhatsApp", "Primeiro contato por e-mail", "Apresentação comercial", "Follow-up",
+  "Reunião", "Proposta enviada", "Retomada de contato", "Agência sem retorno", "Pós-reunião", "Fechamento",
+];
+
+export interface MessageTemplate {
+  id: string;
+  name: string;
+  category: TemplateCategory;
+  body: string;
+  active: boolean;
+  createdBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface UserRoleRecord {
+  userKey: string;
+  login: string | null;
+  email: string;
+  displayName: string;
+  role: UserRole;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AnalyticsEventRecord {
+  id: string;
+  name: string;
+  path: string | null;
+  agencyId: string | null;
+  userEmail: string | null;
+  metadata: Record<string, string | number | boolean | null>;
+  createdAt: string;
+}
+
+export type AgencyPlanCode = "basico" | "verificado" | "regional" | "leads";
+
+export interface AgencyPlan {
+  id: string;
+  code: AgencyPlanCode;
+  name: string;
+  description: string;
+  monthlyPrice: number | null;
+  features: string[];
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AgencySubscription {
+  id: string;
+  agencyId: string;
+  planId: string;
+  status: "trial" | "active" | "paused" | "cancelled";
+  startedAt: string;
+  endsAt: string | null;
+  externalCustomerId: string | null;
+  createdAt: string;
+  updatedAt: string;
+  agencyName?: string;
+  planName?: string;
 }

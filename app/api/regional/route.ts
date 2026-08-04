@@ -2,6 +2,7 @@ import { listAgencies } from "@/db";
 import { regionForCity, regionalOrder } from "@/lib/regional";
 import { activeTourismAgencies } from "@/lib/tourism";
 import type { Agency, RegionalGroup, RegionalRecord, RegionalResponse, TourismAgency } from "@/lib/types";
+import { getAuthenticatedUserWithRole } from "@/app/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -12,7 +13,7 @@ function displayTourismName(agency: TourismAgency) {
   return agency.tradeName === "*" ? "Nome não divulgado" : agency.tradeName;
 }
 
-function toExchangeRecord(agency: Agency): RegionalRecord & { searchText: string } {
+function toExchangeRecord(agency: Agency, includeCommercial: boolean): RegionalRecord & { searchText: string } {
   return {
     id: `exchange-${agency.id}`,
     kind: "exchange",
@@ -27,7 +28,7 @@ function toExchangeRecord(agency: Agency): RegionalRecord & { searchText: string
     website: agency.website,
     href: `/agencias/${agency.slug}`,
     sourceUrl: agency.sourceUrl,
-    commercialStatus: agency.commercialStatus ?? "Não contatada",
+    commercialStatus: includeCommercial ? agency.commercialStatus ?? "Não contatada" : undefined,
     searchText: [agency.tradeName, agency.legalName ?? "", agency.city, agency.region, agency.address ?? "", agency.phone ?? "", agency.email ?? "", agency.website ?? "", ...agency.programs].join(" "),
   };
 }
@@ -60,7 +61,8 @@ export async function GET(request: Request) {
   const requestedLimit = Number(params.get("limit") ?? DEFAULT_LIMIT);
   const limit = Number.isFinite(requestedLimit) ? Math.min(Math.max(Math.floor(requestedLimit), 1), MAX_LIMIT) : DEFAULT_LIMIT;
   const agencies = await listAgencies();
-  const allRecords = [...agencies.map(toExchangeRecord), ...activeTourismAgencies.map(toTourismRecord)];
+  const user = await getAuthenticatedUserWithRole();
+  const allRecords = [...agencies.map((agency) => toExchangeRecord(agency, Boolean(user))), ...activeTourismAgencies.map(toTourismRecord)];
   const filtered = allRecords.filter((record) => {
     const matchesQuery = !query || record.searchText.toLocaleLowerCase("pt-BR").includes(query);
     const matchesType = type === "intercambio" ? record.kind === "exchange" : type === "turismo" ? record.kind === "tourism" : true;

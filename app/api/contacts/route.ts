@@ -1,20 +1,23 @@
 import { addContact, listContacts } from "@/db";
-import { getAuthenticatedUser } from "@/app/auth";
+import { getAuthenticatedUserWithRole } from "@/app/auth";
 import type { ContactRecord } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
+  const user = await getAuthenticatedUserWithRole();
+  if (!user) return Response.json({ error: "Autenticação necessária." }, { status: 401 });
   const agencyId = new URL(request.url).searchParams.get("agencyId");
   if (!agencyId) return Response.json({ error: "agencyId obrigatório." }, { status: 400 });
   return Response.json(await listContacts(agencyId));
 }
 
 export async function POST(request: Request) {
-  if (!(await getAuthenticatedUser())) return Response.json({ error: "Autenticação necessária." }, { status: 401 });
+  const user = await getAuthenticatedUserWithRole();
+  if (!user) return Response.json({ error: "Autenticação necessária." }, { status: 401 });
+  if (user.role === "consulta") return Response.json({ error: "Seu perfil permite apenas consulta." }, { status: 403 });
   const body = await request.json() as Partial<ContactRecord>;
   if (!body.agencyId || !body.summary) return Response.json({ error: "Agência e resumo são obrigatórios." }, { status: 400 });
-  const user = await getAuthenticatedUser();
   const contact: ContactRecord = {
     id: crypto.randomUUID(), agencyId: body.agencyId,
     contactDate: body.contactDate ?? new Date().toISOString().slice(0, 10), contactTime: body.contactTime ?? new Date().toISOString().slice(11, 16),

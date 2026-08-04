@@ -1,5 +1,6 @@
 import { getCommercialSummary, listAgencies } from "@/db";
 import { commercialStatuses, type Agency, type DashboardResponse } from "@/lib/types";
+import { getAuthenticatedUserWithRole } from "@/app/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -12,6 +13,8 @@ function countsBy(items: Agency[], getKey: (agency: Agency) => string) {
 }
 
 export async function GET() {
+  const user = await getAuthenticatedUserWithRole();
+  if (!user) return Response.json({ error: "Autenticação necessária." }, { status: 401 });
   const [agencies, activity] = await Promise.all([listAgencies(), getCommercialSummary()]);
   const today = new Date();
   const todayKey = dateKey(today);

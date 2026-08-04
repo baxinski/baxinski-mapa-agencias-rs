@@ -17,6 +17,7 @@ export default function Home() {
             <Link className="button primary" href="/agencias">Explorar intercâmbio <span>↗</span></Link>
             <Link className="button text" href="/turismo">Agências de turismo <span>→</span></Link>
             <Link className="button text" href="/mapa">Ver regiões <span>→</span></Link>
+            <Link className="button text" href="/encontrar-agencia">Quero encontrar uma agência <span>→</span></Link>
           </div>
         </div>
         <div className="hero-panel" aria-label="Resumo da base">

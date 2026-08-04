@@ -1,7 +1,7 @@
 import AdminPanel from "@/app/components/AdminPanel";
-import { requireAuthenticatedUser } from "@/app/auth";
+import { requireRole } from "@/app/auth";
 
 export default async function AdminPage() {
-  await requireAuthenticatedUser("/admin");
+  await requireRole(["admin", "gestor"], "/admin");
   return <main className="admin-page"><AdminPanel /></main>;
 }

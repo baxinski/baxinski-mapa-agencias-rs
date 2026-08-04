@@ -68,7 +68,7 @@ O score de oportunidade é recalculado a cada alteração da ficha. Os pesos ini
 
 ### Segurança e escopo
 
-As operações de criação e edição, registro de contato, alteração de status e tarefas exigem o usuário autenticado pelo Sites. A publicação atual é privada para o proprietário. Captação pública de leads, cobrança, templates, exportação/importação e permissões granulares ainda não foram ativados.
+As operações de criação e edição, registro de contato, alteração de status e tarefas exigem o usuário autenticado pelo Sites. A publicação atual é privada para o proprietário. A captação pública de leads, templates, exportação CSV e permissões granulares já estão ativas; cobrança e importação de planilhas permanecem pontos de integração para a próxima fase.
 
 ## GitHub, página pública e login
 
@@ -82,3 +82,22 @@ O projeto também contém:
 Para ativar o login no ambiente hospedado, crie uma OAuth App no GitHub com callback em `https://mapa-intercambio-rs.baxinski.chatgpt.site/api/auth/github/callback` e configure `GITHUB_CLIENT_ID` e `GITHUB_CLIENT_SECRET` como variáveis secretas do Sites.
 
 O workflow de Pages não substitui a aplicação principal: ele publica uma visão pública, estática e pesquisável do diretório. O painel e o D1 continuam na plataforma principal.
+
+## Plataforma comercial — restante da entrega
+
+Além do diretório público, a aplicação agora inclui:
+
+- `/encontrar-agencia`: formulário público de captação de leads, com consentimento, preferências de intercâmbio e indicação de agências compatíveis;
+- `/leads`: fila interna para acompanhar e distribuir solicitações recebidas;
+- `/modelos`: biblioteca de modelos de WhatsApp e e-mail com variáveis de agência, cidade, vendedor e reunião;
+- `/relatorios`: visão exportável do funil, cobertura regional, cidades, leads e eventos de uso;
+- `/usuarios`: gestão de perfis `admin`, `gestor`, `vendedor` e `consulta`;
+- `/importar`: validação e importação CSV com detecção de duplicidades, sem sobrescrever fichas existentes;
+- `/planos`: catálogo técnico de planos, perfis verificados e distribuição futura de leads, sem cobrança ativa;
+- exportação CSV na listagem de intercâmbio e paginação server-side na base de turismo;
+- API de eventos (`/api/analytics`) para visualizações, filtros, contatos, leads e conversões;
+- APIs de leads, modelos, relatórios e usuários protegidas por sessão e papel de acesso.
+
+As tabelas adicionais (`leads`, `message_templates`, `user_roles` e `analytics_events`) são criadas automaticamente no primeiro acesso ao banco. A variável pública `ADMIN_GITHUB_LOGINS` deve conter os logins GitHub administradores separados por vírgula; no ambiente principal, o login `baxinski` é o administrador inicial.
+
+O checkout e a monetização permanecem como pontos de integração: a estrutura de dados suporta ofertas e cobrança, mas nenhum pagamento é processado sem uma conta de provedor configurada.

@@ -1,5 +1,6 @@
 import { listAgencies, saveAgency } from "@/db";
-import { getAuthenticatedUser } from "@/app/auth";
+import { getAuthenticatedUserWithRole } from "@/app/auth";
+import { publicAgencyList } from "@/lib/public";
 import type { Agency } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -9,11 +10,15 @@ function slugify(value: string) {
 }
 
 export async function GET() {
-  return Response.json(await listAgencies());
+  const agencies = await listAgencies();
+  const user = await getAuthenticatedUserWithRole();
+  return Response.json(user ? agencies : publicAgencyList(agencies), { headers: { "Cache-Control": user ? "private, max-age=20" : "public, max-age=60" } });
 }
 
 export async function POST(request: Request) {
-  if (!(await getAuthenticatedUser())) return Response.json({ error: "Autenticação necessária." }, { status: 401 });
+  const user = await getAuthenticatedUserWithRole();
+  if (!user) return Response.json({ error: "Autenticação necessária." }, { status: 401 });
+  if (!["admin", "gestor"].includes(user.role)) return Response.json({ error: "Sem permissão para cadastrar agências." }, { status: 403 });
   const body = await request.json() as Partial<Agency>;
   if (!body.tradeName || !body.city || !body.region) return Response.json({ error: "Nome, cidade e região são obrigatórios." }, { status: 400 });
   const now = new Date().toISOString().slice(0, 10);

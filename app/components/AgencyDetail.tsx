@@ -5,6 +5,7 @@ import { FormEvent, useEffect, useState } from "react";
 import type { Agency, CommercialStatus, ContactRecord, StatusHistoryRecord, TaskPriority } from "@/lib/types";
 import { commercialStatuses } from "@/lib/types";
 import { scoreLabel } from "@/lib/scoring";
+import { trackEvent } from "@/lib/analytics";
 
 function Field({ label, value }: { label: string; value: string | number | null | undefined }) {
   return <div className="detail-field"><dt>{label}</dt><dd>{value || <span className="pending">Não informado</span>}</dd></div>;
@@ -25,13 +26,14 @@ export default function AgencyDetail({ slug }: { slug: string }) {
   function load() {
     return fetch(`/api/agencies/${slug}`).then(async (response) => { if (!response.ok) throw new Error(); return await response.json() as Agency; }).then((item) => {
       setAgency(item);
+      trackEvent("visualizacao_agencia", { agencyId: item.id });
       return Promise.all([
-        fetch(`/api/contacts?agencyId=${item.id}`).then(async (response) => await response.json() as ContactRecord[]),
-        fetch(`/api/status-history?agencyId=${item.id}`).then(async (response) => await response.json() as StatusHistoryRecord[]),
+        fetch(`/api/contacts?agencyId=${item.id}`).then(async (response) => response.ok ? await response.json() as ContactRecord[] : []),
+        fetch(`/api/status-history?agencyId=${item.id}`).then(async (response) => response.ok ? await response.json() as StatusHistoryRecord[] : []),
       ]).then(([nextContacts, nextHistory]) => { setContacts(nextContacts); setHistory(nextHistory); });
     }).catch(() => setMissing(true));
   }
-  useEffect(() => { load(); }, [slug]);
+  useEffect(() => { void load(); }, [slug]);
   if (missing) return <div className="empty-state"><strong>Ficha não encontrada.</strong><p><Link href="/agencias">Voltar ao diretório</Link></p></div>;
   if (!agency) return <div className="loading-panel">Carregando ficha…</div>;
   const agencyId = agency.id;
@@ -45,7 +47,7 @@ export default function AgencyDetail({ slug }: { slug: string }) {
     event.preventDefault(); if (!contactForm.summary) return;
     setMessage("Registrando contato…");
     const response = await fetch("/api/contacts", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ agencyId: agencyId, channel: contactForm.interactionType, ...contactForm }) });
-    if (response.ok) { setContactForm({ interactionType: "Ligação", summary: "", result: "", nextStep: "", nextContactAt: "" }); setMessage("Contato registrado no histórico."); await load(); } else setMessage("Não foi possível registrar o contato.");
+    if (response.ok) { trackEvent("contato_registrado", { agencyId }); setContactForm({ interactionType: "Ligação", summary: "", result: "", nextStep: "", nextContactAt: "" }); setMessage("Contato registrado no histórico."); await load(); } else setMessage("Não foi possível registrar o contato.");
   }
   async function submitTask(event: FormEvent) {
     event.preventDefault(); if (!taskForm.title || !taskForm.dueAt) return;

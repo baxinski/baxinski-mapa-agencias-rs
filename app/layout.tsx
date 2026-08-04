@@ -31,6 +31,9 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
             <Link href="/agencias" className="nav-link nav-exchange">Intercâmbio</Link>
             <Link href="/turismo" className="nav-link nav-tourism">Agências de turismo</Link>
             <Link href="/mapa" className="nav-link nav-map">Mapa regional</Link>
+            <Link href="/encontrar-agencia" className="nav-link nav-lead">Encontrar agência</Link>
+            <Link href="/importar" className="nav-link nav-import">Importar base</Link>
+            <Link href="/planos" className="nav-link nav-plans">Planos</Link>
             <Link href="/login" className="nav-login">Entrar com GitHub</Link>
             <Link href="/admin" className="nav-admin">Painel administrativo</Link>
           </nav>
