@@ -130,7 +130,7 @@ export default function RegionalView() {
             <div><dt>Telefone</dt><dd>{record.phone ? <a href={phoneHref(record.phone)}>{formatPhone(record.phone)}</a> : "Não informado"}</dd></div>
             <div><dt>Contato digital</dt><dd>{contactLabel(record)}</dd></div>
           </dl>
-          <div className="regional-result-foot"><Link href={record.href}>{record.kind === "exchange" ? "Abrir ficha →" : "Abrir diretório →"}</Link>{record.sourceUrl && <a href={record.sourceUrl} target="_blank" rel="noreferrer">Fonte ↗</a>}</div>
+          <div className="regional-result-foot"><Link href={record.href}>Abrir ficha →</Link>{record.sourceUrl && <a href={record.sourceUrl} target="_blank" rel="noreferrer">Fonte ↗</a>}</div>
         </article>)}
       </div>
       {!loading && payload.records.length === 0 && <div className="empty-state"><strong>Nenhum resultado encontrado.</strong><p>Experimente remover um filtro ou buscar outro termo.</p></div>}
