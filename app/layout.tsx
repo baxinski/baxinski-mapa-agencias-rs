@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { headers } from "next/headers";
+import SessionNav from "@/app/components/SessionNav";
 import "./globals.css";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -34,7 +35,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
             <Link href="/encontrar-agencia" className="nav-link nav-lead">Encontrar agência</Link>
             <Link href="/importar" className="nav-link nav-import">Importar base</Link>
             <Link href="/planos" className="nav-link nav-plans">Planos</Link>
-            <Link href="/login" className="nav-login">Entrar com GitHub</Link>
+            <SessionNav />
             <Link href="/admin" className="nav-admin">Painel administrativo</Link>
           </nav>
         </header>

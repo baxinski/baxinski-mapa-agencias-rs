@@ -57,7 +57,10 @@ export async function getAuthenticatedUserWithRole(): Promise<AuthenticatedUserW
   const stored = await getUserRole(key);
   const configuredAdmins = String((env as unknown as Record<string, string | undefined>).ADMIN_GITHUB_LOGINS ?? "")
     .split(",").map((value) => value.trim().toLowerCase()).filter(Boolean);
-  const isConfiguredAdmin = user.provider === "github" && configuredAdmins.includes(user.login.toLowerCase());
+  const configuredChatGPTAdmins = String((env as unknown as Record<string, string | undefined>).ADMIN_CHATGPT_EMAILS ?? "")
+    .split(",").map((value) => value.trim().toLowerCase()).filter(Boolean);
+  const isConfiguredAdmin = (user.provider === "github" && configuredAdmins.includes(user.login.toLowerCase())) ||
+    (user.provider === "chatgpt" && configuredChatGPTAdmins.includes(user.email.toLowerCase()));
   const role = isConfiguredAdmin ? "admin" : (stored?.active ? stored.role : "consulta") as UserRole;
   return { ...user, role, userKey: key };
 }
@@ -68,6 +71,6 @@ export async function requireRole(roles: UserRole[], returnTo: string): Promise<
     const safeReturnTo = returnTo.startsWith("/") && !returnTo.startsWith("//") ? returnTo : "/";
     redirect(`/login?return_to=${encodeURIComponent(safeReturnTo)}`);
   }
-  if (!roles.includes(user.role)) redirect(`/login?error=sem_permissao&return_to=${encodeURIComponent(returnTo)}`);
+  if (!roles.includes(user.role)) redirect(`/dashboard?error=sem_permissao&return_to=${encodeURIComponent(returnTo)}`);
   return user;
 }

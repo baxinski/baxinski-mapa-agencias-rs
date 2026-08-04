@@ -98,6 +98,6 @@ Além do diretório público, a aplicação agora inclui:
 - API de eventos (`/api/analytics`) para visualizações, filtros, contatos, leads e conversões;
 - APIs de leads, modelos, relatórios e usuários protegidas por sessão e papel de acesso.
 
-As tabelas adicionais (`leads`, `message_templates`, `user_roles` e `analytics_events`) são criadas automaticamente no primeiro acesso ao banco. A variável pública `ADMIN_GITHUB_LOGINS` deve conter os logins GitHub administradores separados por vírgula; no ambiente principal, o login `baxinski` é o administrador inicial.
+As tabelas adicionais (`leads`, `message_templates`, `user_roles` e `analytics_events`) são criadas automaticamente no primeiro acesso ao banco. As variáveis públicas `ADMIN_GITHUB_LOGINS` e `ADMIN_CHATGPT_EMAILS` podem conter, respectivamente, logins GitHub e e-mails ChatGPT administradores separados por vírgula; no ambiente principal, `baxinski` e a conta ChatGPT do proprietário são administradores iniciais.
 
 O checkout e a monetização permanecem como pontos de integração: a estrutura de dados suporta ofertas e cobrança, mas nenhum pagamento é processado sem uma conta de provedor configurada.

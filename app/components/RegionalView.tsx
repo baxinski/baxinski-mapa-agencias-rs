@@ -6,10 +6,10 @@ import { regionalOrder } from "@/lib/regional";
 import type { RegionalGroup, RegionalRecord, RegionalResponse } from "@/lib/types";
 
 const positions: Record<string, { x: number; y: number }> = {
-  Metropolitana: { x: 59, y: 72 }, Serra: { x: 75, y: 28 }, Centro: { x: 42, y: 48 },
-  "Vale dos Sinos": { x: 71, y: 60 }, Vales: { x: 52, y: 39 }, "Litoral Norte": { x: 88, y: 45 },
-  Norte: { x: 37, y: 17 }, Noroeste: { x: 18, y: 29 }, "Fronteira Oeste": { x: 14, y: 57 },
-  Campanha: { x: 25, y: 80 }, Sul: { x: 47, y: 87 }, Interior: { x: 31, y: 54 },
+  Metropolitana: { x: 57, y: 76 }, Serra: { x: 67, y: 27 }, Centro: { x: 47, y: 51 },
+  "Vale dos Sinos": { x: 63, y: 63 }, Vales: { x: 51, y: 40 }, "Litoral Norte": { x: 73, y: 41 },
+  Norte: { x: 52, y: 16 }, Noroeste: { x: 30, y: 28 }, "Fronteira Oeste": { x: 25, y: 60 },
+  Campanha: { x: 35, y: 80 }, Sul: { x: 49, y: 88 }, Interior: { x: 40, y: 57 },
 };
 
 type DirectoryFilter = "Todos" | "Intercâmbio" | "Turismo";
@@ -88,9 +88,10 @@ export default function RegionalView() {
       <section className="region-map" aria-label="Mapa esquemático das regiões atendidas">
         <div className="map-caption"><span>Visão esquemática</span><small>Intercâmbio + turismo · não representa limites exatos</small></div>
         <div className="map-shape" />
-        {regions.map((group, index) => {
-          const pos = positions[group.region] ?? { x: 48 + index * 4, y: 55 };
-          return <button type="button" className={`map-node${region === group.region ? " active" : ""}${group.dominantStatus ? ` map-node-status-${statusClass(group.dominantStatus)}` : " map-node-status-tourism"}`} key={group.region} style={{ left: `${pos.x}%`, top: `${pos.y}%` }} onClick={() => setRegion(group.region)} aria-label={`Filtrar região ${group.region}`}>
+        {regions.map((group) => {
+          const pos = positions[group.region] ?? { x: 50, y: 52 };
+          const edgeClass = pos.x > 68 ? " map-node-left" : pos.x < 30 ? " map-node-right" : "";
+          return <button type="button" className={`map-node${edgeClass}${region === group.region ? " active" : ""}${group.dominantStatus ? ` map-node-status-${statusClass(group.dominantStatus)}` : " map-node-status-tourism"}`} key={group.region} style={{ left: `${pos.x}%`, top: `${pos.y}%` }} onClick={() => setRegion(group.region)} aria-label={`Filtrar região ${group.region}`}>
             <span>{group.count.toLocaleString("pt-BR")}</span><strong>{group.region}</strong>
           </button>;
         })}
