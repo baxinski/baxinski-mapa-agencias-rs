@@ -21,8 +21,8 @@ export async function GET(request: Request) {
   authorize.searchParams.set("state", state);
 
   const secure = url.protocol === "https:";
-  const response = Response.redirect(authorize, 302);
-  response.headers.append("Set-Cookie", serializeCookie(GITHUB_STATE_COOKIE, state, { maxAge: 600, secure }));
-  response.headers.append("Set-Cookie", serializeCookie(GITHUB_RETURN_COOKIE, returnTo, { maxAge: 600, secure }));
-  return response;
+  const headers = new Headers({ Location: authorize.toString() });
+  headers.append("Set-Cookie", serializeCookie(GITHUB_STATE_COOKIE, state, { maxAge: 600, secure }));
+  headers.append("Set-Cookie", serializeCookie(GITHUB_RETURN_COOKIE, returnTo, { maxAge: 600, secure }));
+  return new Response("Redirecting", { status: 302, headers });
 }
