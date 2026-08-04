@@ -6,7 +6,7 @@ import type { HomeSnapshot } from "@/lib/home";
 
 function formatDate(value: string | null) {
   if (!value) return "Não informado";
-  const parsed = new Date(value);
+  const parsed = new Date(/^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T12:00:00` : value);
   return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" });
 }
 
