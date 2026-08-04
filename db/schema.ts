@@ -35,6 +35,11 @@ export const agencies = sqliteTable("agencies", {
   facebook: text("facebook"),
   network: text("network"),
   commercialStatus: text("commercial_status").notNull().default("Não contatada"),
+  accompanimentStatus: text("accompaniment_status").notNull().default("Não analisada"),
+  accompanimentPriority: text("accompaniment_priority").notNull().default("Sem prioridade definida"),
+  primaryContactName: text("primary_contact_name"),
+  primaryContactRole: text("primary_contact_role"),
+  nextAction: text("next_action"),
   assignedTo: text("assigned_to"),
   opportunityScore: integer("opportunity_score").notNull().default(0),
   estimatedValue: real("estimated_value"),
@@ -71,6 +76,9 @@ export const contacts = sqliteTable("contacts", {
   result: text("result"),
   nextContactAt: text("next_contact_at"),
   createdBy: text("created_by"),
+  contactRole: text("contact_role"),
+  subject: text("subject"),
+  informationObtained: text("information_obtained"),
 });
 
 export const agencyStatusHistory = sqliteTable("agency_status_history", {
@@ -97,6 +105,9 @@ export const tasks = sqliteTable("tasks", {
   completedAt: text("completed_at"),
   createdAt: text("created_at").notNull(),
   createdBy: text("created_by"),
+  result: text("result"),
+  nextAction: text("next_action"),
+  visitOrder: integer("visit_order"),
 });
 
 export const githubSessions = sqliteTable("github_sessions", {
@@ -187,3 +198,4 @@ export const agencySubscriptions = sqliteTable("agency_subscriptions", {
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
 });
+
