@@ -1,7 +1,6 @@
-import LeadsWorkspace from "@/app/components/LeadsWorkspace";
-import { requireAuthenticatedUser } from "@/app/auth";
+import { redirect } from "next/navigation";
 
 export default async function LeadsPage() {
-  await requireAuthenticatedUser("/leads");
-  return <main className="workspace-page"><LeadsWorkspace /></main>;
+  redirect("/acompanhamento");
 }
+
