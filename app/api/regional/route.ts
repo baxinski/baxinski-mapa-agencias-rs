@@ -46,7 +46,7 @@ function toTourismRecord(agency: TourismAgency): RegionalRecord & { searchText: 
     phone: agency.phone,
     email: null,
     website: agency.website,
-    href: "/turismo",
+    href: `/turismo/${agency.id}`,
     sourceUrl: agency.sourceUrl,
     searchText: [agency.tradeName, agency.legalName ?? "", agency.cadasturNumber, agency.city, agency.address ?? "", agency.neighborhood ?? "", agency.cep ?? "", agency.phone ?? "", agency.website ?? ""].join(" "),
   };
