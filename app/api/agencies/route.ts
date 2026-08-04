@@ -30,9 +30,10 @@ export async function POST(request: Request) {
     owners: body.owners ?? null, commercialManager: body.commercialManager ?? null,
     exchangeLead: body.exchangeLead ?? null, programs: body.programs ?? [], belta: body.belta ?? null,
     units: Number(body.units ?? 1), audienceProfile: body.audienceProfile ?? "Não classificado", destinations: body.destinations ?? [], exchangeTypes: body.exchangeTypes ?? [], description: body.description ?? null, hours: body.hours ?? null, logoUrl: body.logoUrl ?? null, competitors: body.competitors ?? null, productsOfInterest: body.productsOfInterest ?? null, needs: body.needs ?? null,
-    commercialPotential: body.commercialPotential ?? "C", commercialStatus: body.commercialStatus ?? "Não contatada", assignedTo: body.assignedTo ?? null, estimatedValue: body.estimatedValue ?? null, googleRating: body.googleRating ?? null, googleReviewCount: body.googleReviewCount ?? null, isFranchise: body.isFranchise ?? null, notes: body.notes ?? null,
+    commercialPotential: body.commercialPotential ?? "C", commercialStatus: body.commercialStatus ?? "Não contatada", accompanimentStatus: body.accompanimentStatus ?? "Não analisada", accompanimentPriority: body.accompanimentPriority ?? "Sem prioridade definida", assignedTo: body.internalOwner ?? body.assignedTo ?? null, internalOwner: body.internalOwner ?? body.assignedTo ?? null, primaryContactName: body.primaryContactName ?? null, primaryContactRole: body.primaryContactRole ?? null, nextAction: body.nextAction ?? null, estimatedValue: body.estimatedValue ?? null, googleRating: body.googleRating ?? null, googleReviewCount: body.googleReviewCount ?? null, isFranchise: body.isFranchise ?? null, notes: body.notes ?? null,
     verificationStatus: body.verificationStatus ?? "Revisar", sourceUrl: body.sourceUrl ?? null,
     sourceLabel: body.sourceLabel ?? null, verifiedAt: body.verifiedAt ?? null, updatedAt: now,
   };
   return Response.json(await saveAgency(item), { status: 201 });
 }
+
