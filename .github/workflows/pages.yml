@@ -1,4 +1,4 @@
-name: Publicar diretório no GitHub Pages
+name: Publicar diretÃ³rio no GitHub Pages
 
 on:
   push:
@@ -18,20 +18,21 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Baixar código
+      - name: Baixar cÃ³digo
         uses: actions/checkout@v4
       - name: Preparar Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
-      - name: Instalar dependências
-        run: npm ci
-      - name: Gerar diretório público
+      - name: Instalar dependÃªncias
+        # Re-resolve optional native packages for the Linux runner.
+        run: npm install --no-audit --no-fund
+      - name: Gerar diretÃ³rio pÃºblico
         run: node scripts/build-github-pages.mjs
       - name: Preparar GitHub Pages
         uses: actions/configure-pages@v5
-      - name: Empacotar página
+      - name: Empacotar pÃ¡gina
         uses: actions/upload-pages-artifact@v3
         with:
           path: github-pages
@@ -46,3 +47,4 @@ jobs:
       - name: Publicar
         id: deployment
         uses: actions/deploy-pages@v4
+
