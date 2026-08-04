@@ -28,15 +28,11 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
             <span><strong>Mapa de Agências</strong><small>Rio Grande do Sul</small></span>
           </Link>
           <nav aria-label="Navegação principal">
-            <Link href="/dashboard" className="nav-link nav-dashboard">Dashboard</Link>
             <Link href="/agencias" className="nav-link nav-exchange">Intercâmbio</Link>
             <Link href="/turismo" className="nav-link nav-tourism">Agências de turismo</Link>
             <Link href="/mapa" className="nav-link nav-map">Mapa regional</Link>
-            <Link href="/encontrar-agencia" className="nav-link nav-lead">Encontrar agência</Link>
-            <Link href="/importar" className="nav-link nav-import">Importar base</Link>
-            <Link href="/planos" className="nav-link nav-plans">Planos</Link>
             <SessionNav />
-            <Link href="/admin" className="nav-admin">Painel administrativo</Link>
+            <Link href="/admin" className="nav-admin">Painel</Link>
           </nav>
         </header>
         {children}

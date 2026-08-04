@@ -17,7 +17,7 @@ const errors: Record<string, string> = {
 export default function GitHubLogin({ returnTo, error }: { returnTo: string; error?: string }) {
   const [user, setUser] = useState<SessionUser | null>(null);
   const [loading, setLoading] = useState(true);
-  useEffect(() => { fetch("/api/auth/session").then(async (response) => await response.json() as { user: SessionUser | null }).then((payload) => setUser(payload.user)).finally(() => setLoading(false)); }, []);
+  useEffect(() => { fetch("/api/auth/session", { cache: "no-store" }).then(async (response) => await response.json() as { user: SessionUser | null }).then((payload) => setUser(payload.user)).finally(() => setLoading(false)); }, []);
   const signInHref = `/api/auth/github?return_to=${encodeURIComponent(returnTo)}`;
 
   return <section className="login-card">
