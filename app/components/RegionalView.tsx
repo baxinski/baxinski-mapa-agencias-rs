@@ -45,7 +45,7 @@ export default function RegionalView() {
   const [query, setQuery] = useState("");
   const [kind, setKind] = useState<DirectoryFilter>("Todos");
   const [city, setCity] = useState("Todas");
-  const [region, setRegion] = useState("Todas");
+  const [region, setRegion] = useState(() => typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("region") ?? "Todas" : "Todas");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -138,3 +138,4 @@ export default function RegionalView() {
     </section>
   </>;
 }
+
