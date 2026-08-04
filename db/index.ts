@@ -1,7 +1,7 @@
 import { env } from "cloudflare:workers";
 import { seedAgencies } from "@/lib/seed";
 import { calculateOpportunityScore } from "@/lib/scoring";
-import type { Agency, AgencyPlan, AgencySubscription, AnalyticsEventRecord, ContactRecord, LeadRecord, MessageTemplate, StatusHistoryRecord, TaskRecord, UserRoleRecord } from "@/lib/types";
+import type { AccompanimentStatus, Agency, AgencyPlan, AgencySubscription, AnalyticsEventRecord, ContactRecord, LeadRecord, MessageTemplate, StatusHistoryRecord, TaskRecord, UserRoleRecord } from "@/lib/types";
 
 type RawAgency = Omit<Agency, "programs" | "belta"> & { programs: string; belta: number | null };
 
@@ -55,6 +55,8 @@ async function initializeDatabase() {
       verification_status TEXT NOT NULL, source_url TEXT, source_label TEXT, verified_at TEXT, updated_at TEXT NOT NULL,
       state TEXT NOT NULL DEFAULT 'RS', neighborhood TEXT, cep TEXT, whatsapp TEXT, facebook TEXT, network TEXT,
       commercial_status TEXT NOT NULL DEFAULT 'N√£o contatada', assigned_to TEXT,
+      accompaniment_status TEXT NOT NULL DEFAULT 'N√£o analisada', accompaniment_priority TEXT NOT NULL DEFAULT 'Sem prioridade definida',
+      primary_contact_name TEXT, primary_contact_role TEXT, next_action TEXT,
       opportunity_score INTEGER NOT NULL DEFAULT 0, estimated_value REAL,
       first_contact_at TEXT, last_contact_at TEXT, next_follow_up_at TEXT, loss_reason TEXT,
       google_rating REAL, google_review_count INTEGER, is_franchise INTEGER,
@@ -67,6 +69,7 @@ async function initializeDatabase() {
       id TEXT PRIMARY KEY, agency_id TEXT NOT NULL, contact_date TEXT NOT NULL, channel TEXT NOT NULL,
       contact_name TEXT, summary TEXT NOT NULL, next_step TEXT, created_at TEXT NOT NULL,
       interaction_type TEXT, contact_time TEXT, result TEXT, next_contact_at TEXT, created_by TEXT,
+      contact_role TEXT, subject TEXT, information_obtained TEXT,
       FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE
     )`),
     db.prepare("CREATE INDEX IF NOT EXISTS contacts_agency_idx ON contacts(agency_id)"),
@@ -81,6 +84,7 @@ async function initializeDatabase() {
       assigned_to TEXT, due_at TEXT NOT NULL, priority TEXT NOT NULL DEFAULT 'M√©dia',
       status TEXT NOT NULL DEFAULT 'Aberta', activity_type TEXT NOT NULL DEFAULT 'Follow-up',
       notes TEXT, completed_at TEXT, created_at TEXT NOT NULL, created_by TEXT,
+      result TEXT, next_action TEXT, visit_order INTEGER,
       FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE
     )`),
     db.prepare("CREATE INDEX IF NOT EXISTS tasks_due_idx ON tasks(due_at, status)"),
@@ -132,6 +136,8 @@ async function initializeDatabase() {
   const agencyColumns: Array<[string, string]> = [
     ["state", "TEXT NOT NULL DEFAULT 'RS'"], ["neighborhood", "TEXT"], ["cep", "TEXT"], ["whatsapp", "TEXT"], ["facebook", "TEXT"], ["network", "TEXT"],
     ["commercial_status", "TEXT NOT NULL DEFAULT 'N√£o contatada'"], ["assigned_to", "TEXT"],
+    ["accompaniment_status", "TEXT NOT NULL DEFAULT 'N√£o analisada'"], ["accompaniment_priority", "TEXT NOT NULL DEFAULT 'Sem prioridade definida'"],
+    ["primary_contact_name", "TEXT"], ["primary_contact_role", "TEXT"], ["next_action", "TEXT"],
     ["opportunity_score", "INTEGER NOT NULL DEFAULT 0"], ["estimated_value", "REAL"],
     ["first_contact_at", "TEXT"], ["last_contact_at", "TEXT"], ["next_follow_up_at", "TEXT"], ["loss_reason", "TEXT"],
     ["google_rating", "REAL"], ["google_review_count", "INTEGER"], ["is_franchise", "INTEGER"],
@@ -141,7 +147,9 @@ async function initializeDatabase() {
   // Existing databases created by an older version may need these two
   // compatibility checks, but each table is inspected only once.
   if (existingNames.has("agencies")) await ensureColumns(db, "agencies", agencyColumns);
-  if (existingNames.has("contacts")) await ensureColumns(db, "contacts", [["interaction_type", "TEXT"], ["contact_time", "TEXT"], ["result", "TEXT"], ["next_contact_at", "TEXT"], ["created_by", "TEXT"]]);
+  if (existingNames.has("contacts")) await ensureColumns(db, "contacts", [["interaction_type", "TEXT"], ["contact_time", "TEXT"], ["result", "TEXT"], ["next_contact_at", "TEXT"], ["created_by", "TEXT"], ["contact_role", "TEXT"], ["subject", "TEXT"], ["information_obtained", "TEXT"]]);
+  if (existingNames.has("tasks")) await ensureColumns(db, "tasks", [["result", "TEXT"], ["next_action", "TEXT"], ["visit_order", "INTEGER"]]);
+  if (existingNames.has("agencies")) await db.prepare("UPDATE agencies SET accompaniment_status = CASE WHEN accompaniment_status IS NULL OR accompaniment_status = '' THEN CASE WHEN last_contact_at IS NULL THEN 'N√£o analisada' ELSE 'Contato realizado' END ELSE accompaniment_status END, accompaniment_priority = COALESCE(NULLIF(accompaniment_priority, ''), 'Sem prioridade definida')").run();
 
   const count = needsBootstrap ? await db.prepare("SELECT COUNT(*) AS total FROM agencies").first<{ total: number }>() : { total: 1 };
   if ((count?.total ?? 0) === 0) {
@@ -201,4 +209,349 @@ function normalize(row: Record<string, unknown>): Agency {
     sourceUrl: raw.sourceUrl, sourceLabel: raw.sourceLabel, verifiedAt: raw.verifiedAt,
     updatedAt: String(raw.updatedAt), contactCount: Number(raw.contactCount ?? 0),
     state: String(raw.state ?? "RS"), neighborhood: raw.neighborhood as string | null, cep: raw.cep as string | null,
-    whatsapp:€Ω∂∂âûÀk∫wµÁAÖ›Ö•–ÅëÖ—ÖâÖÕî†§π¡…ï¡Ö…î°ÅM1PÅ•ê∞ÅÖùïπçÂ}•êÅLÅÖùïπçÂ%ê∞ÅçΩπ—Öç—}ëÖ—îÅLÅçΩπ—Öç—Ö—î∞(ÄÄÄÅç°Öππï∞∞ÅçΩπ—Öç—}πÖµîÅLÅçΩπ—Öç—9Öµî∞ÅÕ’µµÖ…‰∞Åπï·—}Õ—ï¿ÅLÅπï·—M—ï¿∞Åç…ïÖ—ïë}Ö–ÅLÅç…ïÖ—ïë–∞(ÄÄÄÅ•π—ï…Öç—•Ωπ}—Â¡îÅLÅ•π—ï…Öç—•ΩπQÂ¡î∞ÅçΩπ—Öç—}—•µîÅLÅçΩπ—Öç—Q•µî∞Å…ïÕ’±–∞Åπï·—}çΩπ—Öç—}Ö–ÅLÅπï·—Ωπ—Öç—–∞Åç…ïÖ—ïë}â‰ÅLÅç…ïÖ—ïë	‰(ÄÄÄÅI=4ÅçΩπ—Öç—ÃÅ=IHÅ	dÅçΩπ—Öç—}ëÖ—îÅM∞Åç…ïÖ—ïë}Ö–ÅMÄ§πÖ±∞ÒΩπ—Öç—IïçΩ…ê¯†§Ï(ÄÅ…ï—’…∏Å…ïÕ’±–π…ïÕ’±—ÃÏ)Ù()ï·¡Ω…–ÅÖÕÂπåÅô’πç—•Ω∏ÅÖëëΩπ—Öç–°çΩπ—Öç–ËÅΩπ—Öç—IïçΩ…ê§ÅÏ(ÄÅÖ›Ö•–ÅïπÕ’…ïÖ—ÖâÖÕî†§Ï(ÄÅÖ›Ö•–ÅëÖ—ÖâÖÕî†§π¡…ï¡Ö…î°Å%9MIPÅ%9Q<ÅçΩπ—Öç—ÃÄ°•ê∞ÅÖùïπçÂ}•ê∞ÅçΩπ—Öç—}ëÖ—î∞Åç°Öππï∞∞ÅçΩπ—Öç—}πÖµî∞ÅÕ’µµÖ…‰∞Åπï·—}Õ—ï¿∞Åç…ïÖ—ïë}Ö–∞(ÄÄÄÅ•π—ï…Öç—•Ωπ}—Â¡î∞ÅçΩπ—Öç—}—•µî∞Å…ïÕ’±–∞Åπï·—}çΩπ—Öç—}Ö–∞Åç…ïÖ—ïë}â‰§ÅY1ULÄ†¸∞Ä¸∞Ä¸∞Ä¸∞Ä¸∞Ä¸∞Ä¸∞Ä¸∞Ä¸∞Ä¸∞Ä¸∞Ä¸∞Ä¸•Ä§πâ•πê†(ÄÄÄÄÄÅçΩπ—Öç–π•ê∞ÅçΩπ—Öç–πÖùïπçÂ%ê∞ÅçΩπ—Öç–πçΩπ—Öç—Ö—î∞ÅçΩπ—Öç–πç°Öππï∞∞ÅçΩπ—Öç–πçΩπ—Öç—9Öµî∞ÅçΩπ—Öç–πÕ’µµÖ…‰∞ÅçΩπ—Öç–ππï·—M—ï¿∞ÅçΩπ—Öç–πç…ïÖ—ïë–∞(ÄÄÄÄÄÅçΩπ—Öç–π•π—ï…Öç—•ΩπQÂ¡îÄ¸¸ÅçΩπ—Öç–πç°Öππï∞∞ÅçΩπ—Öç–πçΩπ—Öç—Q•µîÄ¸¸Åπ’±∞∞ÅçΩπ—Öç–π…ïÕ’±–Ä¸¸Åπ’±∞∞ÅçΩπ—Öç–ππï·—Ωπ—Öç—–Ä¸¸Åπ’±∞∞ÅçΩπ—Öç–πç…ïÖ—ïë	‰Ä¸¸Åπ’±∞§π…’∏†§Ï(ÄÅçΩπÕ–Åç’……ïπ–ÄÙÅÖ›Ö•–Åùï—ùïπç‰°çΩπ—Öç–πÖùïπçÂ%ê§Ï(ÄÅçΩπÕ–Åπï·—M—Ö—’ÃÄÙÅç’……ïπ–¸πçΩµµï…ç•Ö±M—Ö—’ÃÄÙÙÙÄâ;çºÅçΩπ—Ö—ÖëÑàÄ¸ÄâΩπ—Ö—ºÅ•π•ç•ÖëºàÄËÄ°ç’……ïπ–¸πçΩµµï…ç•Ö±M—Ö—’ÃÄ¸¸ÄâΩπ—Ö—ºÅ•π•ç•Öëºà§Ï(ÄÅÖ›Ö•–ÅëÖ—ÖâÖÕî†§π¡…ï¡Ö…î°ÅUAQÅÖùïπç•ïÃÅMPÅ±ÖÕ—}çΩπ—Öç—}Ö–Ù¸∞Åô•…Õ—}çΩπ—Öç—}Ö–ı=1M°ô•…Õ—}çΩπ—Öç—}Ö–∞Ä¸§∞(ÄÄÄÅçΩµµï…ç•Ö±}Õ—Ö—’ÃÙ¸∞ÅΩ¡¡Ω…—’π•—Â}ÕçΩ…îÙ¸Å]!IÅ•êÙ˝Ä§πâ•πê°çΩπ—Öç–πçΩπ—Öç—Ö—î∞ÅçΩπ—Öç–πçΩπ—Öç—Ö—î∞Åπï·—M—Ö—’Ã∞(ÄÄÄÄÄÅçÖ±ç’±Ö—ï=¡¡Ω…—’π•—ÂMçΩ…î°ÏÄ∏∏πç’……ïπ–∞ÅçΩµµï…ç•Ö±M—Ö—’ÃËÅπï·—M—Ö—’Ã∞Å±ÖÕ—Ωπ—Öç—–ËÅçΩπ—Öç–πçΩπ—Öç—Ö—îÅÙ§∞ÅçΩπ—Öç–πÖùïπçÂ%ê§π…’∏†§Ï(ÄÅ…ï—’…∏ÅçΩπ—Öç–Ï)Ù()ï·¡Ω…–ÅÖÕÂπåÅô’πç—•Ω∏ÅÖëëM—Ö—’Õ!•Õ—Ω…‰°•—ï¥ËÅM—Ö—’Õ!•Õ—Ω…ÂIïçΩ…ê§ÅÏ(ÄÅÖ›Ö•–ÅïπÕ’…ïÖ—ÖâÖÕî†§Ï(ÄÅÖ›Ö•–ÅëÖ—ÖâÖÕî†§π¡…ï¡Ö…î°Å%9MIPÅ%9Q<ÅÖùïπçÂ}Õ—Ö—’Õ}°•Õ—Ω…‰Ä°•ê∞ÅÖùïπçÂ}•ê∞Å¡…ïŸ•Ω’Õ}Õ—Ö—’Ã∞Åπï›}Õ—Ö—’Ã∞Å’Õï…}ïµÖ•∞∞ÅπΩ—î∞Åç°Öπùïë}Ö–§(ÄÄÄÅY1ULÄ†¸∞Ä¸∞Ä¸∞Ä¸∞Ä¸∞Ä¸∞Ä¸•Ä§πâ•πê°•—ï¥π•ê∞Å•—ï¥πÖùïπçÂ%ê∞Å•—ï¥π¡…ïŸ•Ω’ÕM—Ö—’Ã∞Å•—ï¥ππï›M—Ö—’Ã∞Å•—ï¥π’Õï…µÖ•∞∞Å•—ï¥ππΩ—î∞Å•—ï¥πç°Öπùïë–§π…’∏†§Ï(ÄÅ…ï—’…∏Å•—ï¥Ï)Ù()ï·¡Ω…–ÅÖÕÂπåÅô’πç—•Ω∏Å±•Õ—M—Ö—’Õ!•Õ—Ω…‰°ÖùïπçÂ%êËÅÕ—…•πú§ÅÏ(ÄÅÖ›Ö•–ÅïπÕ’…ïÖ—ÖâÖÕî†§Ï(ÄÅçΩπÕ–Å…ïÕ’±–ÄÙÅÖ›Ö•–ÅëÖ—ÖâÖÕî†§π¡…ï¡Ö…î°ÅM1PÅ•ê∞ÅÖùïπçÂ}•êÅLÅÖùïπçÂ%ê∞Å¡…ïŸ•Ω’Õ}Õ—Ö—’ÃÅLÅ¡…ïŸ•Ω’ÕM—Ö—’Ã∞(ÄÄÄÅπï›}Õ—Ö—’ÃÅLÅπï›M—Ö—’Ã∞Å’Õï…}ïµÖ•∞ÅLÅ’Õï…µÖ•∞∞ÅπΩ—î∞Åç°Öπùïë}Ö–ÅLÅç°Öπùïë–(ÄÄÄÅI=4ÅÖùïπçÂ}Õ—Ö—’Õ}°•Õ—Ω…‰Å]!IÅÖùïπçÂ}•êÄÙÄ¸Å=IHÅ	dÅç°Öπùïë}Ö–ÅMÄ§πâ•πê°ÖùïπçÂ%ê§πÖ±∞ÒM—Ö—’Õ!•Õ—Ω…ÂIïçΩ…ê¯†§Ï(ÄÅ…ï—’…∏Å…ïÕ’±–π…ïÕ’±—ÃÏ)Ù()ï·¡Ω…–ÅÖÕÂπåÅô’πç—•Ω∏Å±•Õ—QÖÕ≠Ã†§ÅÏ(ÄÅÖ›Ö•–ÅïπÕ’…ïÖ—ÖâÖÕî†§Ï(ÄÅçΩπÕ–Å…ïÕ’±–ÄÙÅÖ›Ö•–ÅëÖ—ÖâÖÕî†§π¡…ï¡Ö…î°ÅM1PÅ–π•ê∞Å–πÖùïπçÂ}•êÅLÅÖùïπçÂ%ê∞Å–π—•—±î∞Å–πëïÕç…•¡—•Ω∏∞(ÄÄÄÅ–πÖÕÕ•ùπïë}—ºÅLÅÖÕÕ•ùπïëQº∞Å–πë’ï}Ö–ÅLÅë’ï–∞Å–π¡…•Ω…•—‰∞Å–πÕ—Ö—’Ã∞Å–πÖç—•Ÿ•—Â}—Â¡îÅLÅÖç—•Ÿ•—ÂQÂ¡î∞(ÄÄÄÅ–ππΩ—ïÃ∞Å–πçΩµ¡±ï—ïë}Ö–ÅLÅçΩµ¡±ï—ïë–∞Å–πç…ïÖ—ïë}Ö–ÅLÅç…ïÖ—ïë–∞Å–πç…ïÖ—ïë}â‰ÅLÅç…ïÖ—ïë	‰∞(ÄÄÄÅÑπ—…Öëï}πÖµîÅLÅÖùïπçÂ9Öµî∞ÅÑπç•—‰ÅLÅÖùïπçÂ•—‰(ÄÄÄÅI=4Å—ÖÕ≠ÃÅ–Å)=%8ÅÖùïπç•ïÃÅÑÅ=8ÅÑπ•êÄÙÅ–πÖùïπçÂ}•êÅ=IHÅ	dÅ–πë’ï}Ö–ÅMÄ§πÖ±∞ÒQÖÕ≠IïçΩ…ê¯†§Ï(ÄÅ…ï—’…∏Å…ïÕ’±–π…ïÕ’±—ÃÏ)Ù()ï·¡Ω…–ÅÖÕÂπåÅô’πç—•Ω∏ÅÖëëQÖÕ¨°—ÖÕ¨ËÅQÖÕ≠IïçΩ…ê§ÅÏ(ÄÅÖ›Ö•–ÅïπÕ’…ïÖ—ÖâÖÕî†§Ï(ÄÅÖ›Ö•–ÅëÖ—ÖâÖÕî†§π¡…ï¡Ö…î°Å%9MIPÅ%9Q<Å—ÖÕ≠ÃÄ°•ê∞ÅÖùïπçÂ}•ê∞Å—•—±î∞ÅëïÕç…•¡—•Ω∏∞ÅÖÕÕ•ùπïë}—º∞Åë’ï}Ö–∞Å¡…•Ω…•—‰∞ÅÕ—Ö—’Ã∞(ÄÄÄÅÖç—•Ÿ•—Â}—Â¡î∞ÅπΩ—ïÃ∞ÅçΩµ¡±ï—ïë}Ö–∞Åç…ïÖ—ïë}Ö–∞Åç…ïÖ—ïë}â‰§ÅY1ULÄ†¸∞Ä¸∞Ä¸∞Ä¸∞Ä¸∞Ä¸∞Ä¸∞Ä¸∞Ä¸∞Ä¸∞Ä¸∞Ä¸∞Ä¸•Ä§(ÄÄÄÄπâ•πê°—ÖÕ¨π•ê∞Å—ÖÕ¨πÖùïπçÂ%ê∞Å—ÖÕ¨π—•—±î∞Å—ÖÕ¨πëïÕç…•¡—•Ω∏∞Å—ÖÕ¨πÖÕÕ•ùπïëQº∞Å—ÖÕ¨πë’ï–∞Å—ÖÕ¨π¡…•Ω…•—‰∞Å—ÖÕ¨πÕ—Ö—’Ã∞(ÄÄÄÄÄÅ—ÖÕ¨πÖç—•Ÿ•—ÂQÂ¡î∞Å—ÖÕ¨ππΩ—ïÃ∞Å—ÖÕ¨πçΩµ¡±ï—ïë–∞Å—ÖÕ¨πç…ïÖ—ïë–∞Å—ÖÕ¨πç…ïÖ—ïë	‰§π…’∏†§Ï(ÄÅÖ›Ö•–ÅëÖ—ÖâÖÕî†§π¡…ï¡Ö…î†âUAQÅÖùïπç•ïÃÅMPÅπï·—}ôΩ±±Ω›}’¡}Ö–Ù¸Å]!IÅ•êÙ¸à§πâ•πê°—ÖÕ¨πë’ï–∞Å—ÖÕ¨πÖùïπçÂ%ê§π…’∏†§Ï(ÄÅ…ï—’…∏Å—ÖÕ¨Ï)Ù()ï·¡Ω…–ÅÖÕÂπåÅô’πç—•Ω∏Å’¡ëÖ—ïQÖÕ¨°•êËÅÕ—…•πú∞ÅÕ—Ö—’ÃËÅQÖÕ≠IïçΩ…ëlâÕ—Ö—’Ãât∞ÅçΩµ¡±ï—ïë–ËÅÕ—…•πúÅÅπ’±∞§ÅÏ(ÄÅÖ›Ö•–ÅïπÕ’…ïÖ—ÖâÖÕî†§Ï(ÄÅÖ›Ö•–ÅëÖ—ÖâÖÕî†§π¡…ï¡Ö…î†âUAQÅ—ÖÕ≠ÃÅMPÅÕ—Ö—’ÃÙ¸∞ÅçΩµ¡±ï—ïë}Ö–Ù¸Å]!IÅ•êÙ¸à§πâ•πê°Õ—Ö—’Ã∞ÅçΩµ¡±ï—ïë–∞Å•ê§π…’∏†§Ï(ÄÅ…ï—’…∏ÅëÖ—ÖâÖÕî†§π¡…ï¡Ö…î†âM1PÅ–π•ê∞Å–πÖùïπçÂ}•êÅLÅÖùïπçÂ%ê∞Å–π—•—±î∞Å–πëïÕç…•¡—•Ω∏∞Å–πÖÕÕ•ùπïë}—ºÅLÅÖÕÕ•ùπïëQº∞Å–πë’ï}Ö–ÅLÅë’ï–∞Å–π¡…•Ω…•—‰∞Å–πÕ—Ö—’Ã∞Å–πÖç—•Ÿ•—Â}—Â¡îÅLÅÖç—•Ÿ•—ÂQÂ¡î∞Å–ππΩ—ïÃ∞Å–πçΩµ¡±ï—ïë}Ö–ÅLÅçΩµ¡±ï—ïë–∞Å–πç…ïÖ—ïë}Ö–ÅLÅç…ïÖ—ïë–∞Å–πç…ïÖ—ïë}â‰ÅLÅç…ïÖ—ïë	‰∞ÅÑπ—…Öëï}πÖµîÅLÅÖùïπçÂ9Öµî∞ÅÑπç•—‰ÅLÅÖùïπçÂ•—‰ÅI=4Å—ÖÕ≠ÃÅ–Å)=%8ÅÖùïπç•ïÃÅÑÅ=8ÅÑπ•êı–πÖùïπçÂ}•êÅ]!IÅ–π•êÙ¸à§πâ•πê°•ê§πô•…Õ–ÒQÖÕ≠IïçΩ…ê¯†§Ï)Ù()ï·¡Ω…–ÅÖÕÂπåÅô’πç—•Ω∏Åùï—Ωµµï…ç•Ö±M’µµÖ…‰†§ÅÏ(ÄÅÖ›Ö•–ÅïπÕ’…ïÖ—ÖâÖÕî†§Ï(ÄÅçΩπÕ–ÅmçΩπ—Öç—Ã∞Å—ÖÕ≠ÕtÄÙÅÖ›Ö•–ÅA…Ωµ•ÕîπÖ±∞°m±•Õ—±±Ωπ—Öç—Ã†§∞Å±•Õ—QÖÕ≠Ã†•t§Ï(ÄÅ…ï—’…∏ÅÏÅçΩπ—Öç—Ã∞Å—ÖÕ≠ÃÅÙÏ)Ù()ï·¡Ω…–Å—Â¡îÅ•—°’âMïÕÕ•ΩπIïçΩ…êÄÙÅÏ(ÄÅÕïÕÕ•Ωπ%êËÅÕ—…•πúÏ(ÄÅù•—°’â%êËÅÕ—…•πúÏ(ÄÅ±Ωù•∏ËÅÕ—…•πúÏ(ÄÅë•Õ¡±ÖÂ9ÖµîËÅÕ—…•πúÏ(ÄÅïµÖ•∞ËÅÕ—…•πúÅÅπ’±∞Ï(ÄÅÖŸÖ—Ö…U…∞ËÅÕ—…•πúÅÅπ’±∞Ï(ÄÅç…ïÖ—ïë–ËÅÕ—…•πúÏ(ÄÅï·¡•…ïÕ–ËÅÕ—…•πúÏ)ÙÏ()ï·¡Ω…–ÅÖÕÂπåÅô’πç—•Ω∏ÅÕÖŸï•—°’âMïÕÕ•Ω∏°ÕïÕÕ•Ω∏ËÅ•—°’âMïÕÕ•ΩπIïçΩ…ê§ÅÏ(ÄÅÖ›Ö•–ÅïπÕ’…ïÖ—ÖâÖÕî†§Ï(ÄÅÖ›Ö•–ÅëÖ—ÖâÖÕî†§π¡…ï¡Ö…î°Å%9MIPÅ%9Q<Åù•—°’â}ÕïÕÕ•ΩπÃ(ÄÄÄÄ°ÕïÕÕ•Ωπ}•ê∞Åù•—°’â}•ê∞Å±Ωù•∏∞Åë•Õ¡±ÖÂ}πÖµî∞ÅïµÖ•∞∞ÅÖŸÖ—Ö…}’…∞∞Åç…ïÖ—ïë}Ö–∞Åï·¡•…ïÕ}Ö–§(ÄÄÄÅY1ULÄ†¸∞Ä¸∞Ä¸∞Ä¸∞Ä¸∞Ä¸∞Ä¸∞Ä¸§(ÄÄÄÅ=8Å=91%P°ÕïÕÕ•Ωπ}•ê§Å<ÅUAQÅMPÅù•—°’â}•êıï·ç±’ëïêπù•—°’â}•ê∞Å±Ωù•∏ıï·ç±’ëïêπ±Ωù•∏∞(ÄÄÄÅë•Õ¡±ÖÂ}πÖµîıï·ç±’ëïêπë•Õ¡±ÖÂ}πÖµî∞ÅïµÖ•∞ıï·ç±’ëïêπïµÖ•∞∞ÅÖŸÖ—Ö…}’…∞ıï·ç±’ëïêπÖŸÖ—Ö…}’…∞∞(ÄÄÄÅç…ïÖ—ïë}Ö–ıï·ç±’ëïêπç…ïÖ—ïë}Ö–∞Åï·¡•…ïÕ}Ö–ıï·ç±’ëïêπï·¡•…ïÕ}Ö—Ä§(ÄÄÄÄπâ•πê°ÕïÕÕ•Ω∏πÕïÕÕ•Ωπ%ê∞ÅÕïÕÕ•Ω∏πù•—°’â%ê∞ÅÕïÕÕ•Ω∏π±Ωù•∏∞ÅÕïÕÕ•Ω∏πë•Õ¡±ÖÂ9Öµî∞ÅÕïÕÕ•Ω∏πïµÖ•∞∞ÅÕïÕÕ•Ω∏πÖŸÖ—Ö…U…∞∞ÅÕïÕÕ•Ω∏πç…ïÖ—ïë–∞ÅÕïÕÕ•Ω∏πï·¡•…ïÕ–§π…’∏†§Ï(ÄÅ…ï—’…∏ÅÕïÕÕ•Ω∏Ï)Ù()ï·¡Ω…–ÅÖÕÂπåÅô’πç—•Ω∏Åùï—•—°’âMïÕÕ•Ω∏°ÕïÕÕ•Ωπ%êËÅÕ—…•πú§ÅÏ(ÄÅÖ›Ö•–ÅïπÕ’…ïÖ—ÖâÖÕî†§Ï(ÄÅçΩπÕ–Å…Ω‹ÄÙÅÖ›Ö•–ÅëÖ—ÖâÖÕî†§π¡…ï¡Ö…î°ÅM1PÅÕïÕÕ•Ωπ}•êÅLÅÕïÕÕ•Ωπ%ê∞Åù•—°’â}•êÅLÅù•—°’â%ê∞(ÄÄÄÅ±Ωù•∏∞Åë•Õ¡±ÖÂ}πÖµîÅLÅë•Õ¡±ÖÂ9Öµî∞ÅïµÖ•∞∞ÅÖŸÖ—Ö…}’…∞ÅLÅÖŸÖ—Ö…U…∞∞(ÄÄÄÅç…ïÖ—ïë}Ö–ÅLÅç…ïÖ—ïë–∞Åï·¡•…ïÕ}Ö–ÅLÅï·¡•…ïÕ–ÅI=4Åù•—°’â}ÕïÕÕ•ΩπÃÅ]!IÅÕïÕÕ•Ωπ}•êÄÙÄ˝Ä§(ÄÄÄÄπâ•πê°ÕïÕÕ•Ωπ%ê§πô•…Õ–Ò•—°’âMïÕÕ•ΩπIïçΩ…ê¯†§Ï(ÄÅ•òÄ†Ö…Ω‹§Å…ï—’…∏Åπ’±∞Ï(ÄÅ•òÄ°πï‹ÅÖ—î°…Ω‹πï·¡•…ïÕ–§πùï—Q•µî†§ÄÙÅÖ—îππΩ‹†§§ÅÏ(ÄÄÄÅÖ›Ö•–Åëï±ï—ï•—°’âMïÕÕ•Ω∏°ÕïÕÕ•Ωπ%ê§Ï(ÄÄÄÅ…ï—’…∏Åπ’±∞Ï(ÄÅÙ(ÄÅ…ï—’…∏Å…Ω‹Ï)Ù()ï·¡Ω…–ÅÖÕÂπåÅô’πç—•Ω∏Åëï±ï—ï•—°’âMïÕÕ•Ω∏°ÕïÕÕ•Ωπ%êËÅÕ—…•πú§ÅÏ(ÄÅÖ›Ö•–ÅïπÕ’…ïÖ—ÖâÖÕî†§Ï(ÄÅÖ›Ö•–ÅëÖ—ÖâÖÕî†§π¡…ï¡Ö…î†â1QÅI=4Åù•—°’â}ÕïÕÕ•ΩπÃÅ]!IÅÕïÕÕ•Ωπ}•êÄÙÄ¸à§πâ•πê°ÕïÕÕ•Ωπ%ê§π…’∏†§Ï)Ù()ô’πç—•Ω∏Å¡Ö…ÕïM—…•πù1•Õ–°ŸÖ±’îËÅ’π≠πΩ›∏§ËÅÕ—…•πùmtÅÏ(ÄÅ—…‰ÅÏ(ÄÄÄÅçΩπÕ–Å¡Ö…ÕïêÄÙÅ)M=8π¡Ö…Õî°M—…•πú°ŸÖ±’îÄ¸¸Äâmtà§§Ï(ÄÄÄÅ…ï—’…∏Å……Ö‰π•Õ……Ö‰°¡Ö…Õïê§Ä¸Å¡Ö…ÕïêπµÖ¿°M—…•πú§ÄËÅmtÏ(ÄÅÙÅçÖ—ç†ÅÏ(ÄÄÄÅ…ï—’…∏ÅmtÏ(ÄÅÙ)Ù()ï·¡Ω…–ÅÖÕÂπåÅô’πç—•Ω∏ÅÖëë1ïÖê°±ïÖêËÅ1ïÖëIïçΩ…ê§ÅÏ(ÄÅÖ›Ö•–ÅïπÕ’…ïÖ—ÖâÖÕî†§Ï(ÄÅÖ›Ö•–ÅëÖ—ÖâÖÕî†§π¡…ï¡Ö…î°Å%9MIPÅ%9Q<Å±ïÖëÃÄ†(ÄÄÄÅ•ê∞ÅπÖµî∞Å›°Ö—ÕÖ¡¿∞ÅïµÖ•∞∞Åç•—‰∞ÅëïÕ—•πÖ—•Ω∏∞Åï·ç°Öπùï}—Â¡î∞Åâ’ëùï—}…Öπùî∞Å—…ÖŸï±}ëÖ—î∞(ÄÄÄÅë’…Ö—•Ω∏∞Å—…ÖŸï±ï…}Öùî∞ÅπΩ—ïÃ∞ÅçΩπÕïπ–∞ÅÕΩ’…çî∞ÅÕ—Ö—’Ã∞ÅÖÕÕ•ùπïë}—º∞ÅµÖ—ç°ïë}ÖùïπçÂ}•ëÃ∞Åç…ïÖ—ïë}Ö–∞Å’¡ëÖ—ïë}Ö–(ÄÄ§ÅY1ULÄ†¸∞Ä¸∞Ä¸∞Ä¸∞Ä¸∞Ä¸∞Ä¸∞Ä¸∞Ä¸∞Ä¸∞Ä¸∞Ä¸∞Ä¸∞Ä¸∞Ä¸∞Ä¸∞Ä¸∞Ä¸∞Ä¸•Ä§(ÄÄÄÄπâ•πê°±ïÖêπ•ê∞Å±ïÖêππÖµî∞Å±ïÖêπ›°Ö—ÕÖ¡¿∞Å±ïÖêπïµÖ•∞∞Å±ïÖêπç•—‰∞Å±ïÖêπëïÕ—•πÖ—•Ω∏∞Å±ïÖêπï·ç°ÖπùïQÂ¡î∞(ÄÄÄÄÄÅ±ïÖêπâ’ëùï—IÖπùî∞Å±ïÖêπ—…ÖŸï±Ö—î∞Å±ïÖêπë’…Ö—•Ω∏∞Å±ïÖêπ—…ÖŸï±ï…ùî∞Å±ïÖêππΩ—ïÃ∞Å±ïÖêπçΩπÕïπ–Ä¸ÄƒÄËÄ¿∞(ÄÄÄÄÄÅ±ïÖêπÕΩ’…çî∞Å±ïÖêπÕ—Ö—’Ã∞Å±ïÖêπÖÕÕ•ùπïëQº∞Å)M=8πÕ—…•πù•ô‰°±ïÖêπµÖ—ç°ïëùïπçÂ%ëÃ§∞Å±ïÖêπç…ïÖ—ïë–∞Å±ïÖêπ’¡ëÖ—ïë–§π…’∏†§Ï(ÄÅ…ï—’…∏Å±ïÖêÏ)Ù()ï·¡Ω…–ÅÖÕÂπåÅô’πç—•Ω∏Å±•Õ—1ïÖëÃ†§ÅÏ(ÄÅÖ›Ö•–ÅïπÕ’…ïÖ—ÖâÖÕî†§Ï(ÄÅçΩπÕ–Å…ïÕ’±–ÄÙÅÖ›Ö•–ÅëÖ—ÖâÖÕî†§π¡…ï¡Ö…î°ÅM1PÅ•ê∞ÅπÖµî∞Å›°Ö—ÕÖ¡¿∞ÅïµÖ•∞∞Åç•—‰∞ÅëïÕ—•πÖ—•Ω∏∞(ÄÄÄÅï·ç°Öπùï}—Â¡îÅLÅï·ç°ÖπùïQÂ¡î∞Åâ’ëùï—}…ÖπùîÅLÅâ’ëùï—IÖπùî∞Å—…ÖŸï±}ëÖ—îÅLÅ—…ÖŸï±Ö—î∞(ÄÄÄÅë’…Ö—•Ω∏∞Å—…ÖŸï±ï…}ÖùîÅLÅ—…ÖŸï±ï…ùî∞ÅπΩ—ïÃ∞ÅçΩπÕïπ–∞ÅÕΩ’…çî∞ÅÕ—Ö—’Ã∞ÅÖÕÕ•ùπïë}—ºÅLÅÖÕÕ•ùπïëQº∞(ÄÄÄÅµÖ—ç°ïë}ÖùïπçÂ}•ëÃÅLÅµÖ—ç°ïëùïπçÂ%ëÃ∞Åç…ïÖ—ïë}Ö–ÅLÅç…ïÖ—ïë–∞Å’¡ëÖ—ïë}Ö–ÅLÅ’¡ëÖ—ïë–(ÄÄÄÅI=4Å±ïÖëÃÅ=IHÅ	dÅç…ïÖ—ïë}Ö–ÅMÄ§πÖ±∞ÒIïçΩ…êÒÕ—…•πú∞Å’π≠πΩ›∏¯¯†§Ï(ÄÅ…ï—’…∏Å…ïÕ’±–π…ïÕ’±—ÃπµÖ¿†°…Ω‹§ÄÙ¯Ä°Ï(ÄÄÄÄ∏∏π…Ω‹∞(ÄÄÄÅçΩπÕïπ–ËÅ	ΩΩ±ïÖ∏°…Ω‹πçΩπÕïπ–§∞(ÄÄÄÅ—…ÖŸï±ï…ùîËÅ…Ω‹π—…ÖŸï±ï…ùîÄÙÙÅπ’±∞Ä¸Åπ’±∞ÄËÅ9’µâï»°…Ω‹π—…ÖŸï±ï…ùî§∞(ÄÄÄÅµÖ—ç°ïëùïπçÂ%ëÃËÅ¡Ö…ÕïM—…•πù1•Õ–°…Ω‹πµÖ—ç°ïëùïπçÂ%ëÃ§∞(ÄÅÙ§§ÅÖÃÅ1ïÖëIïçΩ…ëmtÏ)Ù()ï·¡Ω…–ÅÖÕÂπåÅô’πç—•Ω∏Å’¡ëÖ—ï1ïÖê°•êËÅÕ—…•πú∞Åô•ï±ëÃËÅA•ç¨Ò1ïÖëIïçΩ…ê∞ÄâÕ—Ö—’ÃàÅÄâÖÕÕ•ùπïëQºà¯§ÅÏ(ÄÅÖ›Ö•–ÅïπÕ’…ïÖ—ÖâÖÕî†§Ï(ÄÅçΩπÕ–ÅπΩ‹ÄÙÅπï‹ÅÖ—î†§π—Ω%M=M—…•πú†§Ï(ÄÅÖ›Ö•–ÅëÖ—ÖâÖÕî†§π¡…ï¡Ö…î†âUAQÅ±ïÖëÃÅMPÅÕ—Ö—’ÃÙ¸∞ÅÖÕÕ•ùπïë}—ºÙ¸∞Å’¡ëÖ—ïë}Ö–Ù¸Å]!IÅ•êÙ¸à§(ÄÄÄÄπâ•πê°ô•ï±ëÃπÕ—Ö—’Ã∞Åô•ï±ëÃπÖÕÕ•ùπïëQº∞ÅπΩ‹∞Å•ê§π…’∏†§Ï(ÄÅçΩπÕ–Å…Ω›ÃÄÙÅÖ›Ö•–Å±•Õ—1ïÖëÃ†§Ï(ÄÅ…ï—’…∏Å…Ω›Ãπô•πê†°…Ω‹§ÄÙ¯Å…Ω‹π•êÄÙÙÙÅ•ê§Ä¸¸Åπ’±∞Ï)Ù()ï·¡Ω…–ÅÖÕÂπåÅô’πç—•Ω∏Å±•Õ—5ïÕÕÖùïQïµ¡±Ö—ïÃ°•πç±’ëï%πÖç—•ŸîÄÙÅôÖ±Õî§ÅÏ(ÄÅÖ›Ö•–ÅïπÕ’…ïÖ—ÖâÖÕî†§Ï(ÄÅçΩπÕ–Å…ïÕ’±–ÄÙÅÖ›Ö•–ÅëÖ—ÖâÖÕî†§π¡…ï¡Ö…î°ÅM1PÅ•ê∞ÅπÖµî∞ÅçÖ—ïùΩ…‰∞ÅâΩë‰∞ÅÖç—•Ÿî∞(ÄÄÄÅç…ïÖ—ïë}â‰ÅLÅç…ïÖ—ïë	‰∞Åç…ïÖ—ïë}Ö–ÅLÅç…ïÖ—ïë–∞Å’¡ëÖ—ïë}Ö–ÅLÅ’¡ëÖ—ïë–(ÄÄÄÅI=4ÅµïÕÕÖùï}—ïµ¡±Ö—ïÃÄëÌ•πç±’ëï%πÖç—•ŸîÄ¸ÄààÄËÄâ]!IÅÖç—•ŸîÄÙÄƒâÙÅ=IHÅ	dÅçÖ—ïùΩ…‰∞ÅπÖµïÄ§πÖ±∞Ò=µ•–Ò5ïÕÕÖùïQïµ¡±Ö—î∞ÄâÖç—•Ÿîà¯ÄòÅÏÅÖç—•ŸîËÅπ’µâï»ÅÙ¯†§Ï(ÄÅ…ï—’…∏Å…ïÕ’±–π…ïÕ’±—ÃπµÖ¿†°…Ω‹§ÄÙ¯Ä°ÏÄ∏∏π…Ω‹∞ÅÖç—•ŸîËÅ	ΩΩ±ïÖ∏°…Ω‹πÖç—•Ÿî§ÅÙ§§Ï)Ù()ï·¡Ω…–ÅÖÕÂπåÅô’πç—•Ω∏ÅÕÖŸï5ïÕÕÖùïQïµ¡±Ö—î°—ïµ¡±Ö—îËÅ5ïÕÕÖùïQïµ¡±Ö—î§ÅÏ(ÄÅÖ›Ö•–ÅïπÕ’…ïÖ—ÖâÖÕî†§Ï(ÄÅÖ›Ö•–ÅëÖ—ÖâÖÕî†§π¡…ï¡Ö…î°Å%9MIPÅ%9Q<ÅµïÕÕÖùï}—ïµ¡±Ö—ïÃÄ°•ê∞ÅπÖµî∞ÅçÖ—ïùΩ…‰∞ÅâΩë‰∞ÅÖç—•Ÿî∞Åç…ïÖ—ïë}â‰∞Åç…ïÖ—ïë}Ö–∞Å’¡ëÖ—ïë}Ö–§(ÄÄÄÅY1ULÄ†¸∞Ä¸∞Ä¸∞Ä¸∞Ä¸∞Ä¸∞Ä¸∞Ä¸§(ÄÄÄÅ=8Å=91%P°•ê§Å<ÅUAQÅMPÅπÖµîıï·ç±’ëïêππÖµî∞ÅçÖ—ïùΩ…‰ıï·ç±’ëïêπçÖ—ïùΩ…‰∞ÅâΩë‰ıï·ç±’ëïêπâΩë‰∞(ÄÄÄÅÖç—•Ÿîıï·ç±’ëïêπÖç—•Ÿî∞Å’¡ëÖ—ïë}Ö–ıï·ç±’ëïêπ’¡ëÖ—ïë}Ö—Ä§πâ•πê†(ÄÄÄÄÄÅ—ïµ¡±Ö—îπ•ê∞Å—ïµ¡±Ö—îππÖµî∞Å—ïµ¡±Ö—îπçÖ—ïùΩ…‰∞Å—ïµ¡±Ö—îπâΩë‰∞Å—ïµ¡±Ö—îπÖç—•ŸîÄ¸ÄƒÄËÄ¿∞(ÄÄÄÄÄÅ—ïµ¡±Ö—îπç…ïÖ—ïë	‰∞Å—ïµ¡±Ö—îπç…ïÖ—ïë–∞Å—ïµ¡±Ö—îπ’¡ëÖ—ïë–§π…’∏†§Ï(ÄÅçΩπÕ–Å…Ω›ÃÄÙÅÖ›Ö•–Å±•Õ—5ïÕÕÖùïQïµ¡±Ö—ïÃ°—…’î§Ï(ÄÅ…ï—’…∏Å…Ω›Ãπô•πê†°…Ω‹§ÄÙ¯Å…Ω‹π•êÄÙÙÙÅ—ïµ¡±Ö—îπ•ê§Ä¸¸Åπ’±∞Ï)Ù()ï·¡Ω…–ÅÖÕÂπåÅô’πç—•Ω∏Åëï±ï—ï5ïÕÕÖùïQïµ¡±Ö—î°•êËÅÕ—…•πú§ÅÏ(ÄÅÖ›Ö•–ÅïπÕ’…ïÖ—ÖâÖÕî†§Ï(ÄÅÖ›Ö•–ÅëÖ—ÖâÖÕî†§π¡…ï¡Ö…î†â1QÅI=4ÅµïÕÕÖùï}—ïµ¡±Ö—ïÃÅ]!IÅ•êÙ¸à§πâ•πê°•ê§π…’∏†§Ï)Ù()ï·¡Ω…–ÅÖÕÂπåÅô’πç—•Ω∏Åùï—UÕï…IΩ±î°’Õï…-ï‰ËÅÕ—…•πú§ÅÏ(ÄÅÖ›Ö•–ÅïπÕ’…ïÖ—ÖâÖÕî†§Ï(ÄÅ…ï—’…∏ÅëÖ—ÖâÖÕî†§π¡…ï¡Ö…î°ÅM1PÅ’Õï…}≠ï‰ÅLÅ’Õï…-ï‰∞Å±Ωù•∏∞ÅïµÖ•∞∞Åë•Õ¡±ÖÂ}πÖµîÅLÅë•Õ¡±ÖÂ9Öµî∞(ÄÄÄÅ…Ω±î∞ÅÖç—•Ÿî∞Åç…ïÖ—ïë}Ö–ÅLÅç…ïÖ—ïë–∞Å’¡ëÖ—ïë}Ö–ÅLÅ’¡ëÖ—ïë–ÅI=4Å’Õï…}…Ω±ïÃÅ]!IÅ’Õï…}≠ï‰Ù˝Ä§πâ•πê°’Õï…-ï‰§πô•…Õ–Ò=µ•–ÒUÕï…IΩ±ïIïçΩ…ê∞ÄâÖç—•Ÿîà¯ÄòÅÏÅÖç—•ŸîËÅπ’µâï»ÅÙ¯†§Ï)Ù()ï·¡Ω…–ÅÖÕÂπåÅô’πç—•Ω∏Å±•Õ—UÕï…IΩ±ïÃ†§ÅÏ(ÄÅÖ›Ö•–ÅïπÕ’…ïÖ—ÖâÖÕî†§Ï(ÄÅçΩπÕ–Å…ïÕ’±–ÄÙÅÖ›Ö•–ÅëÖ—ÖâÖÕî†§π¡…ï¡Ö…î°ÅM1PÅ’Õï…}≠ï‰ÅLÅ’Õï…-ï‰∞Å±Ωù•∏∞ÅïµÖ•∞∞Åë•Õ¡±ÖÂ}πÖµîÅLÅë•Õ¡±ÖÂ9Öµî∞(ÄÄÄÅ…Ω±î∞ÅÖç—•Ÿî∞Åç…ïÖ—ïë}Ö–ÅLÅç…ïÖ—ïë–∞Å’¡ëÖ—ïë}Ö–ÅLÅ’¡ëÖ—ïë–ÅI=4Å’Õï…}…Ω±ïÃÅ=IHÅ	dÅë•Õ¡±ÖÂ}πÖµïÄ§πÖ±∞Ò=µ•–ÒUÕï…IΩ±ïIïçΩ…ê∞ÄâÖç—•Ÿîà¯ÄòÅÏÅÖç—•ŸîËÅπ’µâï»ÅÙ¯†§Ï(ÄÅ…ï—’…∏Å…ïÕ’±–π…ïÕ’±—ÃπµÖ¿†°…Ω‹§ÄÙ¯Ä°ÏÄ∏∏π…Ω‹∞ÅÖç—•ŸîËÅ	ΩΩ±ïÖ∏°…Ω‹πÖç—•Ÿî§ÅÙ§§Ï)Ù()ï·¡Ω…–ÅÖÕÂπåÅô’πç—•Ω∏ÅÕÖŸïUÕï…IΩ±î°…ïçΩ…êËÅUÕï…IΩ±ïIïçΩ…ê§ÅÏ(ÄÅÖ›Ö•–ÅïπÕ’…ïÖ—ÖâÖÕî†§Ï(ÄÅÖ›Ö•–ÅëÖ—ÖâÖÕî†§π¡…ï¡Ö…î°Å%9MIPÅ%9Q<Å’Õï…}…Ω±ïÃÄ°’Õï…}≠ï‰∞Å±Ωù•∏∞ÅïµÖ•∞∞Åë•Õ¡±ÖÂ}πÖµî∞Å…Ω±î∞ÅÖç—•Ÿî∞Åç…ïÖ—ïë}Ö–∞Å’¡ëÖ—ïë}Ö–§(ÄÄÄÅY1ULÄ†¸∞Ä¸∞Ä¸∞Ä¸∞Ä¸∞Ä¸∞Ä¸∞Ä¸§(ÄÄÄÅ=8Å=91%P°’Õï…}≠ï‰§Å<ÅUAQÅMPÅ±Ωù•∏ıï·ç±’ëïêπ±Ωù•∏∞ÅïµÖ•∞ıï·ç±’ëïêπïµÖ•∞∞(ÄÄÄÅë•Õ¡±ÖÂ}πÖµîıï·ç±’ëïêπë•Õ¡±ÖÂ}πÖµî∞Å…Ω±îıï·ç±’ëïêπ…Ω±î∞ÅÖç—•Ÿîıï·ç±’ëïêπÖç—•Ÿî∞Å’¡ëÖ—ïë}Ö–ıï·ç±’ëïêπ’¡ëÖ—ïë}Ö—Ä§πâ•πê†(ÄÄÄÄÄÅ…ïçΩ…êπ’Õï…-ï‰∞Å…ïçΩ…êπ±Ωù•∏∞Å…ïçΩ…êπïµÖ•∞∞Å…ïçΩ…êπë•Õ¡±ÖÂ9Öµî∞Å…ïçΩ…êπ…Ω±î∞Å…ïçΩ…êπÖç—•ŸîÄ¸ÄƒÄËÄ¿∞(ÄÄÄÄÄÅ…ïçΩ…êπç…ïÖ—ïë–∞Å…ïçΩ…êπ’¡ëÖ—ïë–§π…’∏†§Ï(ÄÅçΩπÕ–ÅÕÖŸïêÄÙÅÖ›Ö•–Åùï—UÕï…IΩ±î°…ïçΩ…êπ’Õï…-ï‰§Ï(ÄÅ…ï—’…∏ÅÕÖŸïêÄ¸ÅÏÄ∏∏πÕÖŸïê∞ÅÖç—•ŸîËÅ	ΩΩ±ïÖ∏°ÕÖŸïêπÖç—•Ÿî§ÅÙÄËÅπ’±∞Ï)Ù()ï·¡Ω…–ÅÖÕÂπåÅô’πç—•Ω∏ÅÖëëπÖ±Â—•çÕŸïπ–°ïŸïπ–ËÅπÖ±Â—•çÕŸïπ—IïçΩ…ê§ÅÏ(ÄÅÖ›Ö•–ÅïπÕ’…ïÖ—ÖâÖÕî†§Ï(ÄÅÖ›Ö•–ÅëÖ—ÖâÖÕî†§π¡…ï¡Ö…î°Å%9MIPÅ%9Q<ÅÖπÖ±Â—•çÕ}ïŸïπ—ÃÄ°•ê∞ÅπÖµî∞Å¡Ö—†∞ÅÖùïπçÂ}•ê∞Å’Õï…}ïµÖ•∞∞Åµï—ÖëÖ—Ñ∞Åç…ïÖ—ïë}Ö–§(ÄÄÄÅY1ULÄ†¸∞Ä¸∞Ä¸∞Ä¸∞Ä¸∞Ä¸∞Ä¸•Ä§πâ•πê°ïŸïπ–π•ê∞ÅïŸïπ–ππÖµî∞ÅïŸïπ–π¡Ö—†∞ÅïŸïπ–πÖùïπçÂ%ê∞ÅïŸïπ–π’Õï…µÖ•∞∞(ÄÄÄÄÄÅ)M=8πÕ—…•πù•ô‰°ïŸïπ–πµï—ÖëÖ—ÑÄ¸¸ÅÌÙ§∞ÅïŸïπ–πç…ïÖ—ïë–§π…’∏†§Ï(ÄÅ…ï—’…∏ÅïŸïπ–Ï)Ù()ï·¡Ω…–ÅÖÕÂπåÅô’πç—•Ω∏ÅÕ’µµÖ…•ÈïπÖ±Â—•çÃ°ëÖÂÃÄÙÄÃ¿§ÅÏ(ÄÅÖ›Ö•–ÅïπÕ’…ïÖ—ÖâÖÕî†§Ï(ÄÅçΩπÕ–ÅÕ•πçîÄÙÅπï‹ÅÖ—î°Ö—îππΩ‹†§Ä¥ÅëÖÂÃÄ®Ä‡ÿ–¿¿¿¿¿§π—Ω%M=M—…•πú†§Ï(ÄÅçΩπÕ–Å…ïÕ’±–ÄÙÅÖ›Ö•–ÅëÖ—ÖâÖÕî†§π¡…ï¡Ö…î°ÅM1PÅπÖµî∞Å=U9P†®§ÅLÅŸÖ±’îÅI=4ÅÖπÖ±Â—•çÕ}ïŸïπ—ÃÅ]!IÅç…ïÖ—ïë}Ö–Ä¯ÙÄ¸ÅI=U@Å	dÅπÖµîÅ=IHÅ	dÅŸÖ±’îÅMÄ§πâ•πê°Õ•πçî§πÖ±∞ÒÏÅπÖµîËÅÕ—…•πúÏÅŸÖ±’îËÅπ’µâï»ÅÙ¯†§Ï(ÄÅ…ï—’…∏Å…ïÕ’±–π…ïÕ’±—ÃπµÖ¿†°…Ω‹§ÄÙ¯Ä°ÏÅ±Öâï∞ËÅ…Ω‹ππÖµî∞ÅŸÖ±’îËÅ9’µâï»°…Ω‹πŸÖ±’î§ÅÙ§§Ï)Ù()ï·¡Ω…–ÅÖÕÂπåÅô’πç—•Ω∏Å±•Õ—ùïπçÂA±ÖπÃ°•πç±’ëï%πÖç—•ŸîÄÙÅôÖ±Õî§ÅÏ(ÄÅÖ›Ö•–ÅïπÕ’…ïÖ—ÖâÖÕî†§Ï(ÄÅçΩπÕ–Å…ïÕ’±–ÄÙÅÖ›Ö•–ÅëÖ—ÖâÖÕî†§π¡…ï¡Ö…î°ÅM1PÅ•ê∞ÅçΩëî∞ÅπÖµî∞ÅëïÕç…•¡—•Ω∏∞ÅµΩπ—°±Â}¡…•çîÅLÅµΩπ—°±ÂA…•çî∞ÅôïÖ—’…ïÃ∞ÅÖç—•Ÿî∞(ÄÄÄÅç…ïÖ—ïë}Ö–ÅLÅç…ïÖ—ïë–∞Å’¡ëÖ—ïë}Ö–ÅLÅ’¡ëÖ—ïë–ÅI=4ÅÖùïπçÂ}¡±ÖπÃÄëÌ•πç±’ëï%πÖç—•ŸîÄ¸ÄààÄËÄâ]!IÅÖç—•ŸîÄÙÄƒâÙÅ=IHÅ	dÅ•ëÄ§πÖ±∞ÒIïçΩ…êÒÕ—…•πú∞Å’π≠πΩ›∏¯¯†§Ï(ÄÅ…ï—’…∏Å…ïÕ’±–π…ïÕ’±—ÃπµÖ¿†°…Ω‹§ÄÙ¯Ä°ÏÄ∏∏π…Ω‹∞ÅµΩπ—°±ÂA…•çîËÅ…Ω‹πµΩπ—°±ÂA…•çîÄÙÙÅπ’±∞Ä¸Åπ’±∞ÄËÅ9’µâï»°…Ω‹πµΩπ—°±ÂA…•çî§∞ÅôïÖ—’…ïÃËÅ¡Ö…ÕïM—…•πù1•Õ–°…Ω‹πôïÖ—’…ïÃ§∞ÅÖç—•ŸîËÅ	ΩΩ±ïÖ∏°…Ω‹πÖç—•Ÿî§ÅÙ§§ÅÖÃÅùïπçÂA±ÖπmtÏ)Ù()ï·¡Ω…–ÅÖÕÂπåÅô’πç—•Ω∏ÅÕÖŸïùïπçÂA±Ö∏°¡±Ö∏ËÅùïπçÂA±Ö∏§ÅÏ(ÄÅÖ›Ö•–ÅïπÕ’…ïÖ—ÖâÖÕî†§Ï(ÄÅÖ›Ö•–ÅëÖ—ÖâÖÕî†§π¡…ï¡Ö…î°Å%9MIPÅ%9Q<ÅÖùïπçÂ}¡±ÖπÃÄ°•ê∞ÅçΩëî∞ÅπÖµî∞ÅëïÕç…•¡—•Ω∏∞ÅµΩπ—°±Â}¡…•çî∞ÅôïÖ—’…ïÃ∞ÅÖç—•Ÿî∞Åç…ïÖ—ïë}Ö–∞Å’¡ëÖ—ïë}Ö–§(ÄÄÄÅY1ULÄ†¸∞Ä¸∞Ä¸∞Ä¸∞Ä¸∞Ä¸∞Ä¸∞Ä¸∞Ä¸§Å=8Å=91%P°•ê§Å<ÅUAQÅMPÅçΩëîıï·ç±’ëïêπçΩëî∞ÅπÖµîıï·ç±’ëïêππÖµî∞(ÄÄÄÅëïÕç…•¡—•Ω∏ıï·ç±’ëïêπëïÕç…•¡—•Ω∏∞ÅµΩπ—°±Â}¡…•çîıï·ç±’ëïêπµΩπ—°±Â}¡…•çî∞ÅôïÖ—’…ïÃıï·ç±’ëïêπôïÖ—’…ïÃ∞ÅÖç—•Ÿîıï·ç±’ëïêπÖç—•Ÿî∞Å’¡ëÖ—ïë}Ö–ıï·ç±’ëïêπ’¡ëÖ—ïë}Ö—Ä§(ÄÄÄÄπâ•πê°¡±Ö∏π•ê∞Å¡±Ö∏πçΩëî∞Å¡±Ö∏ππÖµî∞Å¡±Ö∏πëïÕç…•¡—•Ω∏∞Å¡±Ö∏πµΩπ—°±ÂA…•çî∞Å)M=8πÕ—…•πù•ô‰°¡±Ö∏πôïÖ—’…ïÃ§∞Å¡±Ö∏πÖç—•ŸîÄ¸ÄƒÄËÄ¿∞Å¡±Ö∏πç…ïÖ—ïë–∞Å¡±Ö∏π’¡ëÖ—ïë–§π…’∏†§Ï(ÄÅ…ï—’…∏Ä°Ö›Ö•–Å±•Õ—ùïπçÂA±ÖπÃ°—…’î§§πô•πê†°•—ï¥§ÄÙ¯Å•—ï¥π•êÄÙÙÙÅ¡±Ö∏π•ê§Ä¸¸Åπ’±∞Ï)Ù()ï·¡Ω…–ÅÖÕÂπåÅô’πç—•Ω∏Å±•Õ—ùïπçÂM’âÕç…•¡—•ΩπÃ†§ÅÏ(ÄÅÖ›Ö•–ÅïπÕ’…ïÖ—ÖâÖÕî†§Ï(ÄÅçΩπÕ–Å…ïÕ’±–ÄÙÅÖ›Ö•–ÅëÖ—ÖâÖÕî†§π¡…ï¡Ö…î°ÅM1PÅÃπ•ê∞ÅÃπÖùïπçÂ}•êÅLÅÖùïπçÂ%ê∞ÅÃπ¡±Öπ}•êÅLÅ¡±Öπ%ê∞ÅÃπÕ—Ö—’Ã∞(ÄÄÄÅÃπÕ—Ö…—ïë}Ö–ÅLÅÕ—Ö…—ïë–∞ÅÃπïπëÕ}Ö–ÅLÅïπëÕ–∞ÅÃπï·—ï…πÖ±}ç’Õ—Ωµï…}•êÅLÅï·—ï…πÖ±’Õ—Ωµï…%ê∞(ÄÄÄÅÃπç…ïÖ—ïë}Ö–ÅLÅç…ïÖ—ïë–∞ÅÃπ’¡ëÖ—ïë}Ö–ÅLÅ’¡ëÖ—ïë–∞ÅÑπ—…Öëï}πÖµîÅLÅÖùïπçÂ9Öµî∞Å¿ππÖµîÅLÅ¡±Öπ9Öµî(ÄÄÄÅI=4ÅÖùïπçÂ}Õ’âÕç…•¡—•ΩπÃÅÃÅ)=%8ÅÖùïπç•ïÃÅÑÅ=8ÅÑπ•êıÃπÖùïπçÂ}•êÅ)=%8ÅÖùïπçÂ}¡±ÖπÃÅ¿Å=8Å¿π•êıÃπ¡±Öπ}•êÅ=IHÅ	dÅÃπ’¡ëÖ—ïë}Ö–ÅMÄ§πÖ±∞ÒùïπçÂM’âÕç…•¡—•Ω∏¯†§Ï(ÄÅ…ï—’…∏Å…ïÕ’±–π…ïÕ’±—ÃÏ)Ù()ï·¡Ω…–ÅÖÕÂπåÅô’πç—•Ω∏ÅÕÖŸïùïπçÂM’âÕç…•¡—•Ω∏°Õ’âÕç…•¡—•Ω∏ËÅùïπçÂM’âÕç…•¡—•Ω∏§ÅÏ(ÄÅÖ›Ö•–ÅïπÕ’…ïÖ—ÖâÖÕî†§Ï(ÄÅÖ›Ö•–ÅëÖ—ÖâÖÕî†§π¡…ï¡Ö…î°Å%9MIPÅ%9Q<ÅÖùïπçÂ}Õ’âÕç…•¡—•ΩπÃÄ°•ê∞ÅÖùïπçÂ}•ê∞Å¡±Öπ}•ê∞ÅÕ—Ö—’Ã∞ÅÕ—Ö…—ïë}Ö–∞ÅïπëÕ}Ö–∞Åï·—ï…πÖ±}ç’Õ—Ωµï…}•ê∞Åç…ïÖ—ïë}Ö–∞Å’¡ëÖ—ïë}Ö–§(ÄÄÄÅY1ULÄ†¸∞Ä¸∞Ä¸∞Ä¸∞Ä¸∞Ä¸∞Ä¸∞Ä¸∞Ä¸§Å=8Å=91%P°•ê§Å<ÅUAQÅMPÅ¡±Öπ}•êıï·ç±’ëïêπ¡±Öπ}•ê∞ÅÕ—Ö—’Ãıï·ç±’ëïêπÕ—Ö—’Ã∞(ÄÄÄÅÕ—Ö…—ïë}Ö–ıï·ç±’ëïêπÕ—Ö…—ïë}Ö–∞ÅïπëÕ}Ö–ıï·ç±’ëïêπïπëÕ}Ö–∞Åï·—ï…πÖ±}ç’Õ—Ωµï…}•êıï·ç±’ëïêπï·—ï…πÖ±}ç’Õ—Ωµï…}•ê∞Å’¡ëÖ—ïë}Ö–ıï·ç±’ëïêπ’¡ëÖ—ïë}Ö—Ä§(ÄÄÄÄπâ•πê°Õ’âÕç…•¡—•Ω∏π•ê∞ÅÕ’âÕç…•¡—•Ω∏πÖùïπçÂ%ê∞ÅÕ’âÕç…•¡—•Ω∏π¡±Öπ%ê∞ÅÕ’âÕç…•¡—•Ω∏πÕ—Ö—’Ã∞ÅÕ’âÕç…•¡—•Ω∏πÕ—Ö…—ïë–∞ÅÕ’âÕç…•¡—•Ω∏πïπëÕ–∞ÅÕ’âÕç…•¡—•Ω∏πï·—ï…πÖ±’Õ—Ωµï…%ê∞ÅÕ’âÕç…•¡—•Ω∏πç…ïÖ—ïë–∞ÅÕ’âÕç…•¡—•Ω∏π’¡ëÖ—ïë–§π…’∏†§Ï(ÄÅ…ï—’…∏Ä°Ö›Ö•–Å±•Õ—ùïπçÂM’âÕç…•¡—•ΩπÃ†§§πô•πê†°•—ï¥§ÄÙ¯Å•—ï¥π•êÄÙÙÙÅÕ’âÕç…•¡—•Ω∏π•ê§Ä¸¸Åπ’±∞Ï)Ù
+    whatsapp: raw.whatsapp as string | null, facebook: raw.facebook as string | null, network: raw.network as string | null,
+    commercialStatus: (raw.commercialStatus as Agency["commercialStatus"]) ?? "N√£o contatada",
+    accompanimentStatus: (raw.accompanimentStatus as Agency["accompanimentStatus"]) ?? "N√£o analisada",
+    accompanimentPriority: (raw.accompanimentPriority as Agency["accompanimentPriority"]) ?? "Sem prioridade definida",
+    internalOwner: (raw.internalOwner ?? raw.assignedTo) as string | null,
+    primaryContactName: raw.primaryContactName as string | null,
+    primaryContactRole: raw.primaryContactRole as string | null,
+    nextAction: raw.nextAction as string | null,
+    assignedTo: raw.assignedTo as string | null, opportunityScore: Number(raw.opportunityScore ?? 0),
+    estimatedValue: raw.estimatedValue == null ? null : Number(raw.estimatedValue),
+    firstContactAt: raw.firstContactAt as string | null, lastContactAt: raw.lastContactAt as string | null,
+    nextFollowUpAt: raw.nextFollowUpAt as string | null, lossReason: raw.lossReason as string | null,
+    googleRating: raw.googleRating == null ? null : Number(raw.googleRating), googleReviewCount: raw.googleReviewCount == null ? null : Number(raw.googleReviewCount),
+    isFranchise: raw.isFranchise == null ? null : Boolean(raw.isFranchise), destinations: parseList(raw.destinations), exchangeTypes: parseList(raw.exchangeTypes),
+    description: raw.description as string | null, hours: raw.hours as string | null, logoUrl: raw.logoUrl as string | null,
+    competitors: raw.competitors as string | null, productsOfInterest: raw.productsOfInterest as string | null, needs: raw.needs as string | null,
+    latitude: raw.latitude == null ? null : Number(raw.latitude), longitude: raw.longitude == null ? null : Number(raw.longitude),
+  };
+}
+
+const agencySelect = `SELECT a.id, a.slug, a.legal_name AS legalName, a.trade_name AS tradeName,
+  a.city, a.region, a.address, a.phone, a.email, a.website, a.instagram, a.linkedin,
+  a.directors, a.owners, a.commercial_manager AS commercialManager, a.exchange_lead AS exchangeLead,
+  a.programs, a.belta, a.units, a.audience_profile AS audienceProfile,
+  a.commercial_potential AS commercialPotential, a.notes, a.verification_status AS verificationStatus,
+  a.source_url AS sourceUrl, a.source_label AS sourceLabel, a.verified_at AS verifiedAt, a.updated_at AS updatedAt,
+  a.state, a.neighborhood, a.cep, a.whatsapp, a.facebook, a.network, a.commercial_status AS commercialStatus, a.assigned_to AS assignedTo,
+  a.accompaniment_status AS accompanimentStatus, a.accompaniment_priority AS accompanimentPriority,
+  a.primary_contact_name AS primaryContactName, a.primary_contact_role AS primaryContactRole, a.next_action AS nextAction,
+  a.opportunity_score AS opportunityScore, a.estimated_value AS estimatedValue, a.first_contact_at AS firstContactAt,
+  a.last_contact_at AS lastContactAt, a.next_follow_up_at AS nextFollowUpAt, a.loss_reason AS lossReason,
+  a.google_rating AS googleRating, a.google_review_count AS googleReviewCount, a.is_franchise AS isFranchise,
+  a.destinations, a.exchange_types AS exchangeTypes, a.description, a.hours, a.logo_url AS logoUrl, a.competitors,
+  a.products_of_interest AS productsOfInterest, a.needs, a.latitude, a.longitude,
+  (SELECT COUNT(*) FROM contacts c WHERE c.agency_id = a.id) AS contactCount FROM agencies a`;
+
+export async function listAgencies() {
+  await ensureDatabase();
+  const result = await database().prepare(`${agencySelect} ORDER BY a.trade_name`).all<Record<string, unknown>>();
+  return result.results.map(normalize);
+}
+
+export async function getAgency(key: string) {
+  await ensureDatabase();
+  const row = await database().prepare(`${agencySelect} WHERE a.id = ? OR a.slug = ?`).bin‚Ä¶444 tokens truncated‚Ä¶N√£o analisada", item.accompanimentPriority ?? "Sem prioridade definida", item.primaryContactName ?? null, item.primaryContactRole ?? null, item.nextAction ?? null,
+      item.state ?? "RS", item.neighborhood ?? null, item.cep ?? null, item.whatsapp ?? null, item.facebook ?? null, item.network ?? null, JSON.stringify(item.destinations ?? []), JSON.stringify(item.exchangeTypes ?? []),
+      item.description ?? null, item.hours ?? null, item.logoUrl ?? null, item.competitors ?? null, item.productsOfInterest ?? null, item.needs ?? null, item.latitude ?? null, item.longitude ?? null, item.id).run();
+  return getAgency(item.id);
+}
+
+export async function updateAgency(id: string, item: Agency) {
+  await ensureDatabase();
+  await database().prepare(`UPDATE agencies SET slug=?, legal_name=?, trade_name=?, city=?, region=?, address=?,
+    phone=?, email=?, website=?, instagram=?, linkedin=?, directors=?, owners=?, commercial_manager=?,
+    exchange_lead=?, programs=?, belta=?, units=?, audience_profile=?, commercial_potential=?, notes=?,
+    verification_status=?, source_url=?, source_label=?, verified_at=?, updated_at=? WHERE id=?`)
+    .bind(item.slug, item.legalName, item.tradeName, item.city, item.region, item.address, item.phone, item.email,
+      item.website, item.instagram, item.linkedin, item.directors, item.owners, item.commercialManager,
+      item.exchangeLead, JSON.stringify(item.programs), item.belta === null ? null : Number(item.belta), item.units,
+      item.audienceProfile, item.commercialPotential, item.notes, item.verificationStatus, item.sourceUrl,
+      item.sourceLabel, item.verifiedAt, item.updatedAt, id).run();
+  await database().prepare(`UPDATE agencies SET state=?, neighborhood=?, cep=?, whatsapp=?, facebook=?, network=?, commercial_status=?, assigned_to=?,
+    accompaniment_status=?, accompaniment_priority=?, primary_contact_name=?, primary_contact_role=?, next_action=?,
+    opportunity_score=?, estimated_value=?, first_contact_at=?, last_contact_at=?, next_follow_up_at=?, loss_reason=?,
+    google_rating=?, google_review_count=?, is_franchise=?, destinations=?, exchange_types=?, description=?, hours=?, logo_url=?, competitors=?, products_of_interest=?, needs=?, latitude=?, longitude=? WHERE id=?`)
+    .bind(item.state ?? "RS", item.neighborhood ?? null, item.cep ?? null, item.whatsapp ?? null, item.facebook ?? null, item.network ?? null, item.commercialStatus ?? "N√£o contatada", item.assignedTo ?? null,
+      item.accompanimentStatus ?? "N√£o analisada", item.accompanimentPriority ?? "Sem prioridade definida", item.primaryContactName ?? null, item.primaryContactRole ?? null, item.nextAction ?? null,
+      calculateOpportunityScore(item), item.estimatedValue ?? null, item.firstContactAt ?? null, item.lastContactAt ?? null,
+      item.nextFollowUpAt ?? null, item.lossReason ?? null, item.googleRating ?? null, item.googleReviewCount ?? null,
+      item.isFranchise == null ? null : Number(item.isFranchise), JSON.stringify(item.destinations ?? []), JSON.stringify(item.exchangeTypes ?? []),
+      item.description ?? null, item.hours ?? null, item.logoUrl ?? null, item.competitors ?? null, item.productsOfInterest ?? null, item.needs ?? null, item.latitude ?? null, item.longitude ?? null, id).run();
+  return getAgency(id);
+}
+
+export async function listContacts(agencyId: string) {
+  await ensureDatabase();
+  const result = await database().prepare(`SELECT id, agency_id AS agencyId, contact_date AS contactDate,
+    channel, contact_name AS contactName, summary, next_step AS nextStep, created_at AS createdAt,
+    interaction_type AS interactionType, contact_time AS contactTime, result, next_contact_at AS nextContactAt, created_by AS createdBy,
+    contact_role AS contactRole, subject, information_obtained AS informationObtained
+    FROM contacts WHERE agency_id = ? ORDER BY contact_date DESC, created_at DESC`).bind(agencyId).all<ContactRecord>();
+  return result.results;
+}
+
+export async function listAllContacts() {
+  await ensureDatabase();
+  const result = await database().prepare(`SELECT id, agency_id AS agencyId, contact_date AS contactDate,
+    channel, contact_name AS contactName, summary, next_step AS nextStep, created_at AS createdAt,
+    interaction_type AS interactionType, contact_time AS contactTime, result, next_contact_at AS nextContactAt, created_by AS createdBy,
+    contact_role AS contactRole, subject, information_obtained AS informationObtained
+    FROM contacts ORDER BY contact_date DESC, created_at DESC`).all<ContactRecord>();
+  return result.results;
+}
+
+export async function addContact(contact: ContactRecord) {
+  await ensureDatabase();
+  await database().prepare(`INSERT INTO contacts (id, agency_id, contact_date, channel, contact_name, summary, next_step, created_at,
+    interaction_type, contact_time, result, next_contact_at, created_by, contact_role, subject, information_obtained) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(
+      contact.id, contact.agencyId, contact.contactDate, contact.channel, contact.contactName, contact.summary, contact.nextStep, contact.createdAt,
+      contact.interactionType ?? contact.channel, contact.contactTime ?? null, contact.result ?? null, contact.nextContactAt ?? null, contact.createdBy ?? null,
+      contact.contactRole ?? null, contact.subject ?? null, contact.informationObtained ?? null).run();
+  const current = await getAgency(contact.agencyId);
+  const nextStatus = current?.commercialStatus === "N√£o contatada" ? "Contato iniciado" : (current?.commercialStatus ?? "Contato iniciado");
+  const accompanimentStatus: AccompanimentStatus = contact.nextContactAt ? "Aguardando retorno" : "Contato realizado";
+  await database().prepare(`UPDATE agencies SET last_contact_at=?, first_contact_at=COALESCE(first_contact_at, ?),
+    commercial_status=?, opportunity_score=?, accompaniment_status=?, next_action=? WHERE id=?`).bind(contact.contactDate, contact.contactDate, nextStatus,
+      calculateOpportunityScore({ ...current, commercialStatus: nextStatus, lastContactAt: contact.contactDate }), accompanimentStatus,
+      contact.nextStep ?? null, contact.agencyId).run();
+  return contact;
+}
+
+export async function addStatusHistory(item: StatusHistoryRecord) {
+  await ensureDatabase();
+  await database().prepare(`INSERT INTO agency_status_history (id, agency_id, previous_status, new_status, user_email, note, changed_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?)`).bind(item.id, item.agencyId, item.previousStatus, item.newStatus, item.userEmail, item.note, item.changedAt).run();
+  return item;
+}
+
+export async function listStatusHistory(agencyId: string) {
+  await ensureDatabase();
+  const result = await database().prepare(`SELECT id, agency_id AS agencyId, previous_status AS previousStatus,
+    new_status AS newStatus, user_email AS userEmail, note, changed_at AS changedAt
+    FROM agency_status_history WHERE agency_id = ? ORDER BY changed_at DESC`).bind(agencyId).all<StatusHistoryRecord>();
+  return result.results;
+}
+
+export async function listTasks() {
+  await ensureDatabase();
+  const result = await database().prepare(`SELECT t.id, t.agency_id AS agencyId, t.title, t.description,
+    t.assigned_to AS assignedTo, t.due_at AS dueAt, t.priority, t.status, t.activity_type AS activityType,
+    t.notes, t.completed_at AS completedAt, t.created_at AS createdAt, t.created_by AS createdBy,
+    t.result, t.next_action AS nextAction, t.visit_order AS visitOrder,
+    a.trade_name AS agencyName, a.city AS agencyCity
+    FROM tasks t JOIN agencies a ON a.id = t.agency_id ORDER BY t.due_at ASC`).all<TaskRecord>();
+  return result.results;
+}
+
+export async function addTask(task: TaskRecord) {
+  await ensureDatabase();
+  await database().prepare(`INSERT INTO tasks (id, agency_id, title, description, assigned_to, due_at, priority, status,
+    activity_type, notes, completed_at, created_at, created_by, result, next_action, visit_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    .bind(task.id, task.agencyId, task.title, task.description, task.assignedTo, task.dueAt, task.priority, task.status,
+      task.activityType, task.notes, task.completedAt, task.createdAt, task.createdBy, task.result ?? null, task.nextAction ?? null, task.visitOrder ?? null).run();
+  const nextStatus: AccompanimentStatus = task.activityType === "Visita" ? "Visita planejada" : task.activityType === "Reuni√£o" ? "Reuni√£o agendada" : "Aguardando retorno";
+  await database().prepare("UPDATE agencies SET next_follow_up_at=?, accompaniment_status=?, next_action=? WHERE id=?").bind(task.dueAt, nextStatus, task.nextAction ?? task.title, task.agencyId).run();
+  return task;
+}
+
+export async function updateTask(id: string, status: TaskRecord["status"], completedAt: string | null) {
+  await ensureDatabase();
+  await database().prepare("UPDATE tasks SET status=?, completed_at=? WHERE id=?").bind(status, completedAt, id).run();
+  return database().prepare("SELECT t.id, t.agency_id AS agencyId, t.title, t.description, t.assigned_to AS assignedTo, t.due_at AS dueAt, t.priority, t.status, t.activity_type AS activityType, t.notes, t.completed_at AS completedAt, t.created_at AS createdAt, t.created_by AS createdBy, t.result, t.next_action AS nextAction, t.visit_order AS visitOrder, a.trade_name AS agencyName, a.city AS agencyCity FROM tasks t JOIN agencies a ON a.id=t.agency_id WHERE t.id=?").bind(id).first<TaskRecord>();
+}
+
+export async function getCommercialSummary() {
+  await ensureDatabase();
+  const [contacts, tasks] = await Promise.all([listAllContacts(), listTasks()]);
+  return { contacts, tasks };
+}
+
+export type GithubSessionRecord = {
+  sessionId: string;
+  githubId: string;
+  login: string;
+  displayName: string;
+  email: string | null;
+  avatarUrl: string | null;
+  createdAt: string;
+  expiresAt: string;
+};
+
+export async function saveGithubSession(session: GithubSessionRecord) {
+  await ensureDatabase();
+  await database().prepare(`INSERT INTO github_sessions
+    (session_id, github_id, login, display_name, email, avatar_url, created_at, expires_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(session_id) DO UPDATE SET github_id=excluded.github_id, login=excluded.login,
+    display_name=excluded.display_name, email=excluded.email, avatar_url=excluded.avatar_url,
+    created_at=excluded.created_at, expires_at=excluded.expires_at`)
+    .bind(session.sessionId, session.githubId, session.login, session.displayName, session.email, session.avatarUrl, session.createdAt, session.expiresAt).run();
+  return session;
+}
+
+export async function getGithubSession(sessionId: string) {
+  await ensureDatabase();
+  const row = await database().prepare(`SELECT session_id AS sessionId, github_id AS githubId,
+    login, display_name AS displayName, email, avatar_url AS avatarUrl,
+    created_at AS createdAt, expires_at AS expiresAt FROM github_sessions WHERE session_id = ?`)
+    .bind(sessionId).first<GithubSessionRecord>();
+  if (!row) return null;
+  if (new Date(row.expiresAt).getTime() <= Date.now()) {
+    await deleteGithubSession(sessionId);
+    return null;
+  }
+  return row;
+}
+
+export async function deleteGithubSession(sessionId: string) {
+  await ensureDatabase();
+  await database().prepare("DELETE FROM github_sessions WHERE session_id = ?").bind(sessionId).run();
+}
+
+function parseStringList(value: unknown): string[] {
+  try {
+    const parsed = JSON.parse(String(value ?? "[]"));
+    return Array.isArray(parsed) ? parsed.map(String) : [];
+  } catch {
+    return [];
+  }
+}
+
+export async function addLead(lead: LeadRecord) {
+  await ensureDatabase();
+  await database().prepare(`INSERT INTO leads (
+    id, name, whatsapp, email, city, destination, exchange_type, budget_range, travel_date,
+    duration, traveler_age, notes, consent, source, status, assigned_to, matched_agency_ids, created_at, updated_at
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    .bind(lead.id, lead.name, lead.whatsapp, lead.email, lead.city, lead.destination, lead.exchangeType,
+      lead.budgetRange, lead.travelDate, lead.duration, lead.travelerAge, lead.notes, lead.consent ? 1 : 0,
+      lead.source, lead.status, lead.assignedTo, JSON.stringify(lead.matchedAgencyIds), lead.createdAt, lead.updatedAt).run();
+  return lead;
+}
+
+export async function listLeads() {
+  await ensureDatabase();
+  const result = await database().prepare(`SELECT id, name, whatsapp, email, city, destination,
+    exchange_type AS exchangeType, budget_range AS budgetRange, travel_date AS travelDate,
+    duration, traveler_age AS travelerAge, notes, consent, source, status, assigned_to AS assignedTo,
+    matched_agency_ids AS matchedAgencyIds, created_at AS createdAt, updated_at AS updatedAt
+    FROM leads ORDER BY created_at DESC`).all<Record<string, unknown>>();
+  return result.results.map((row) => ({
+    ...row,
+    consent: Boolean(row.consent),
+    travelerAge: row.travelerAge == null ? null : Number(row.travelerAge),
+    matchedAgencyIds: parseStringList(row.matchedAgencyIds),
+  })) as LeadRecord[];
+}
+
+export async function updateLead(id: string, fields: Pick<LeadRecord, "status" | "assignedTo">) {
+  await ensureDatabase();
+  const now = new Date().toISOString();
+  await database().prepare("UPDATE leads SET status=?, assigned_to=?, updated_at=? WHERE id=?")
+    .bind(fields.status, fields.assignedTo, now, id).run();
+  const rows = await listLeads();
+  return rows.find((row) => row.id === id) ?? null;
+}
+
+export async function listMessageTemplates(includeInactive = false) {
+  await ensureDatabase();
+  const result = await database().prepare(`SELECT id, name, category, body, active,
+    created_by AS createdBy, created_at AS createdAt, updated_at AS updatedAt
+    FROM message_templates ${includeInactive ? "" : "WHERE active = 1"} ORDER BY category, name`).all<Omit<MessageTemplate, "active"> & { active: number }>();
+  return result.results.map((row) => ({ ...row, active: Boolean(row.active) }));
+}
+
+export async function saveMessageTemplate(template: MessageTemplate) {
+  await ensureDatabase();
+  await database().prepare(`INSERT INTO message_templates (id, name, category, body, active, created_by, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET name=excluded.name, category=excluded.category, body=excluded.body,
+    active=excluded.active, updated_at=excluded.updated_at`).bind(
+      template.id, template.name, template.category, template.body, template.active ? 1 : 0,
+      template.createdBy, template.createdAt, template.updatedAt).run();
+  const rows = await listMessageTemplates(true);
+  return rows.find((row) => row.id === template.id) ?? null;
+}
+
+export async function deleteMessageTemplate(id: string) {
+  await ensureDatabase();
+  await database().prepare("DELETE FROM message_templates WHERE id=?").bind(id).run();
+}
+
+export async function getUserRole(userKey: string) {
+  await ensureDatabase();
+  return database().prepare(`SELECT user_key AS userKey, login, email, display_name AS displayName,
+    role, active, created_at AS createdAt, updated_at AS updatedAt FROM user_roles WHERE user_key=?`).bind(userKey).first<Omit<UserRoleRecord, "active"> & { active: number }>();
+}
+
+export async function listUserRoles() {
+  await ensureDatabase();
+  const result = await database().prepare(`SELECT user_key AS userKey, login, email, display_name AS displayName,
+    role, active, created_at AS createdAt, updated_at AS updatedAt FROM user_roles ORDER BY display_name`).all<Omit<UserRoleRecord, "active"> & { active: number }>();
+  return result.results.map((row) => ({ ...row, active: Boolean(row.active) }));
+}
+
+export async function saveUserRole(record: UserRoleRecord) {
+  await ensureDatabase();
+  await database().prepare(`INSERT INTO user_roles (user_key, login, email, display_name, role, active, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(user_key) DO UPDATE SET login=excluded.login, email=excluded.email,
+    display_name=excluded.display_name, role=excluded.role, active=excluded.active, updated_at=excluded.updated_at`).bind(
+      record.userKey, record.login, record.email, record.displayName, record.role, record.active ? 1 : 0,
+      record.createdAt, record.updatedAt).run();
+  const saved = await getUserRole(record.userKey);
+  return saved ? { ...saved, active: Boolean(saved.active) } : null;
+}
+
+export async function addAnalyticsEvent(event: AnalyticsEventRecord) {
+  await ensureDatabase();
+  await database().prepare(`INSERT INTO analytics_events (id, name, path, agency_id, user_email, metadata, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?)`).bind(event.id, event.name, event.path, event.agencyId, event.userEmail,
+      JSON.stringify(event.metadata ?? {}), event.createdAt).run();
+  return event;
+}
+
+export async function summarizeAnalytics(days = 30) {
+  await ensureDatabase();
+  const since = new Date(Date.now() - days * 86400000).toISOString();
+  const result = await database().prepare(`SELECT name, COUNT(*) AS value FROM analytics_events WHERE created_at >= ? GROUP BY name ORDER BY value DESC`).bind(since).all<{ name: string; value: number }>();
+  return result.results.map((row) => ({ label: row.name, value: Number(row.value) }));
+}
+
+export async function listAgencyPlans(includeInactive = false) {
+  await ensureDatabase();
+  const result = await database().prepare(`SELECT id, code, name, description, monthly_price AS monthlyPrice, features, active,
+    created_at AS createdAt, updated_at AS updatedAt FROM agency_plans ${includeInactive ? "" : "WHERE active = 1"} ORDER BY id`).all<Record<string, unknown>>();
+  return result.results.map((row) => ({ ...row, monthlyPrice: row.monthlyPrice == null ? null : Number(row.monthlyPrice), features: parseStringList(row.features), active: Boolean(row.active) })) as AgencyPlan[];
+}
+
+export async function saveAgencyPlan(plan: AgencyPlan) {
+  await ensureDatabase();
+  await database().prepare(`INSERT INTO agency_plans (id, code, name, description, monthly_price, features, active, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET code=excluded.code, name=excluded.name,
+    description=excluded.description, monthly_price=excluded.monthly_price, features=excluded.features, active=excluded.active, updated_at=excluded.updated_at`)
+    .bind(plan.id, plan.code, plan.name, plan.description, plan.monthlyPrice, JSON.stringify(plan.features), plan.active ? 1 : 0, plan.createdAt, plan.updatedAt).run();
+  return (await listAgencyPlans(true)).find((item) => item.id === plan.id) ?? null;
+}
+
+export async function listAgencySubscriptions() {
+  await ensureDatabase();
+  const result = await database().prepare(`SELECT s.id, s.agency_id AS agencyId, s.plan_id AS planId, s.status,
+    s.started_at AS startedAt, s.ends_at AS endsAt, s.external_customer_id AS externalCustomerId,
+    s.created_at AS createdAt, s.updated_at AS updatedAt, a.trade_name AS agencyName, p.name AS planName
+    FROM agency_subscriptions s JOIN agencies a ON a.id=s.agency_id JOIN agency_plans p ON p.id=s.plan_id ORDER BY s.updated_at DESC`).all<AgencySubscription>();
+  return result.results;
+}
+
+export async function saveAgencySubscription(subscription: AgencySubscription) {
+  await ensureDatabase();
+  await database().prepare(`INSERT INTO agency_subscriptions (id, agency_id, plan_id, status, started_at, ends_at, external_customer_id, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET plan_id=excluded.plan_id, status=excluded.status,
+    started_at=excluded.started_at, ends_at=excluded.ends_at, external_customer_id=excluded.external_customer_id, updated_at=excluded.updated_at`)
+    .bind(subscription.id, subscription.agencyId, subscription.planId, subscription.status, subscription.startedAt, subscription.endsAt, subscription.externalCustomerId, subscription.createdAt, subscription.updatedAt).run();
+  return (await listAgencySubscriptions()).find((item) => item.id === subscription.id) ?? null;
+}
+
