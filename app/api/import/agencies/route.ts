@@ -108,7 +108,13 @@ export async function POST(request: Request) {
   if (!csv.trim() || csv.length > 2_000_000) return Response.json({ error: "Envie um CSV válido de até 2 MB." }, { status: 400 });
   const existing = await listAgencies();
   const slugs = new Set(existing.map((item) => item.slug));
-  const candidates = parseCsv(csv).map((row, index) => candidateFromRow(row, index + 2, existing, slugs));
+  const candidates: ImportCandidate[] = [];
+  const duplicatePool = [...existing];
+  for (const [index, row] of parseCsv(csv).entries()) {
+    const candidate = candidateFromRow(row, index + 2, duplicatePool, slugs);
+    candidates.push(candidate);
+    if (!candidate.errors.length && !candidate.duplicateOf) duplicatePool.push(candidate.agency);
+  }
   const valid = candidates.filter((item) => !item.errors.length && !item.duplicateOf);
   if (!body.confirm) {
     return Response.json({ total: candidates.length, valid: valid.length, duplicates: candidates.filter((item) => item.duplicateOf).length, invalid: candidates.filter((item) => item.errors.length).length, preview: candidates.slice(0, 100).map(({ agency, ...item }) => ({ ...item, tradeName: agency.tradeName, city: agency.city })) });
