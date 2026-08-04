@@ -32,6 +32,8 @@ jobs:
         run: node scripts/build-github-pages.mjs
       - name: Preparar GitHub Pages
         uses: actions/configure-pages@v5
+        with:
+          enablement: true
       - name: Empacotar página
         uses: actions/upload-pages-artifact@v3
         with:
