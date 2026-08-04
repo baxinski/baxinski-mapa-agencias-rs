@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import type { TourismAgency } from "@/lib/types";
 
@@ -45,8 +46,11 @@ function formatDate(value: string | null) {
   return new Intl.DateTimeFormat("pt-BR", { dateStyle: "medium" }).format(new Date(`${value}T12:00:00`));
 }
 
-function externalUrl(value: string) {
-  return /^https?:\/\//i.test(value) ? value : `https://${value}`;
+function externalUrl(value: string | null) {
+  const normalized = value?.trim() ?? "";
+  if (!normalized || /^(sem site|não tenho site|nao tenho site|não informado|nao informado)$/i.test(normalized)) return null;
+  if (normalized.startsWith("@")) return `https://www.instagram.com/${normalized.slice(1)}`;
+  return /^https?:\/\//i.test(normalized) ? normalized : `https://${normalized}`;
 }
 
 function displayName(agency: TourismAgency) {
@@ -106,10 +110,11 @@ export default function TourismDirectory() {
           <div className="tourism-grid">
             {records.map((agency) => {
               const cep = formatCep(agency.cep);
+              const websiteUrl = externalUrl(agency.website);
               return (
                 <article className="tourism-card" key={agency.id}>
                   <div className="tourism-card-head"><span className="status-badge">Regular</span><span>Cadastur · {formatCnpj(agency.cadasturNumber)}</span></div>
-                  <h2>{displayName(agency)}</h2>
+                  <h2><Link href={`/turismo/${agency.id}`}>{displayName(agency)}</Link></h2>
                   {agency.legalName && agency.legalName !== agency.tradeName && <p className="tourism-legal">{agency.legalName}</p>}
                   <p className="location">{agency.city} <span>·</span> RS</p>
                   <dl className="tourism-fields">
@@ -118,7 +123,8 @@ export default function TourismDirectory() {
                     <div><dt>Vigência</dt><dd>até {formatDate(agency.expiresAt)}</dd></div>
                   </dl>
                   <div className="tourism-card-foot">
-                    <span>{agency.website ? <a href={externalUrl(agency.website)} target="_blank" rel="noreferrer">Abrir contato ↗</a> : "Contato digital não informado"}</span>
+                    <Link className="tourism-detail-link" href={`/turismo/${agency.id}`}>Abrir ficha completa →</Link>
+                    <span>{websiteUrl ? <a href={websiteUrl} target="_blank" rel="noreferrer">Abrir contato ↗</a> : "Contato digital não informado"}</span>
                     <a href={agency.sourceUrl} target="_blank" rel="noreferrer">Fonte Cadastur ↗</a>
                   </div>
                 </article>
