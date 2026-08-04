@@ -6,10 +6,12 @@ import { regionalOrder } from "@/lib/regional";
 import type { RegionalGroup, RegionalRecord, RegionalResponse } from "@/lib/types";
 
 const positions: Record<string, { x: number; y: number }> = {
-  Metropolitana: { x: 57, y: 76 }, Serra: { x: 67, y: 27 }, Centro: { x: 47, y: 51 },
-  "Vale dos Sinos": { x: 63, y: 63 }, Vales: { x: 51, y: 40 }, "Litoral Norte": { x: 73, y: 41 },
-  Norte: { x: 52, y: 16 }, Noroeste: { x: 30, y: 28 }, "Fronteira Oeste": { x: 25, y: 60 },
-  Campanha: { x: 35, y: 80 }, Sul: { x: 49, y: 88 }, Interior: { x: 40, y: 57 },
+  // Approximate geographic anchors: the markers follow the real north/east/south
+  // orientation of RS instead of the earlier abstract diamond layout.
+  Metropolitana: { x: 80, y: 47 }, Serra: { x: 80, y: 30 }, Centro: { x: 48, y: 40 },
+  "Vale dos Sinos": { x: 82, y: 41 }, Vales: { x: 70, y: 36 }, "Litoral Norte": { x: 96, y: 34 },
+  Norte: { x: 65, y: 17 }, Noroeste: { x: 37, y: 16 }, "Fronteira Oeste": { x: 8, y: 43 },
+  Campanha: { x: 44, y: 66 }, Sul: { x: 66, y: 72 }, Interior: { x: 54, y: 49 },
 };
 
 type DirectoryFilter = "Todos" | "Intercâmbio" | "Turismo";
