@@ -15,6 +15,24 @@ export const commercialStatuses = [
 export type CommercialStatus = (typeof commercialStatuses)[number];
 export type TaskPriority = "Baixa" | "Média" | "Alta" | "Urgente";
 export type TaskStatus = "Aberta" | "Concluída" | "Cancelada";
+export const accompanimentStatuses = [
+  "Não analisada",
+  "Dados incompletos",
+  "Pronta para contato",
+  "Contato realizado",
+  "Aguardando retorno",
+  "Reunião agendada",
+  "Visita planejada",
+  "Visita realizada",
+  "Relacionamento ativo",
+  "Sem retorno",
+  "Não prioritária",
+] as const;
+export type AccompanimentStatus = (typeof accompanimentStatuses)[number];
+export const accompanimentPriorities = ["Alta", "Média", "Baixa", "Sem prioridade definida"] as const;
+export type AccompanimentPriority = (typeof accompanimentPriorities)[number];
+export const accompanimentChannels = ["Telefone", "WhatsApp", "E-mail", "Presencial", "Videoconferência", "Visita", "Outro"] as const;
+export type AccompanimentChannel = (typeof accompanimentChannels)[number];
 export type UserRole = "admin" | "gestor" | "vendedor" | "consulta";
 
 export const userRoles: UserRole[] = ["admin", "gestor", "vendedor", "consulta"];
@@ -75,6 +93,13 @@ export interface Agency {
   needs?: string | null;
   latitude?: number | null;
   longitude?: number | null;
+  accompanimentStatus?: AccompanimentStatus;
+  accompanimentPriority?: AccompanimentPriority;
+  internalOwner?: string | null;
+  primaryContactName?: string | null;
+  primaryContactRole?: string | null;
+  nextAction?: string | null;
+  checklist?: Record<string, boolean>;
 }
 
 export interface ContactRecord {
@@ -91,13 +116,16 @@ export interface ContactRecord {
   result?: string | null;
   nextContactAt?: string | null;
   createdBy?: string | null;
+  contactRole?: string | null;
+  subject?: string | null;
+  informationObtained?: string | null;
 }
 
 export interface StatusHistoryRecord {
   id: string;
   agencyId: string;
-  previousStatus: CommercialStatus | null;
-  newStatus: CommercialStatus;
+  previousStatus: string | null;
+  newStatus: string;
   userEmail: string | null;
   note: string | null;
   changedAt: string;
@@ -119,6 +147,38 @@ export interface TaskRecord {
   createdBy: string | null;
   agencyName?: string;
   agencyCity?: string;
+  result?: string | null;
+  nextAction?: string | null;
+  visitOrder?: number | null;
+}
+
+export interface AccompanimentAgency extends Agency {
+  agencyKind: "exchange" | "tourism";
+  completeness: number;
+  missingFields: string[];
+  lastContactAt: string | null;
+  nextContactAt: string | null;
+  openTaskCount: number;
+  overdueTaskCount: number;
+  contactPerson: string | null;
+  contactRole: string | null;
+}
+
+export interface AccompanimentResponse {
+  agencies: AccompanimentAgency[];
+  tasks: TaskRecord[];
+  metrics: {
+    total: number;
+    notAnalyzed: number;
+    incomplete: number;
+    ready: number;
+    contacted: number;
+    awaitingReply: number;
+    meetings: number;
+    visitsPlanned: number;
+    overdue: number;
+  };
+  filters: { cities: string[]; regions: string[]; owners: string[] };
 }
 
 export interface DashboardResponse {
@@ -309,3 +369,4 @@ export interface AgencySubscription {
   agencyName?: string;
   planName?: string;
 }
+
