@@ -1,5 +1,6 @@
-import PlansWorkspace from "@/app/components/PlansWorkspace";
+import { redirect } from "next/navigation";
 
 export default function PlansPage() {
-  return <main className="page-shell"><PlansWorkspace /></main>;
+  redirect("/acompanhamento");
 }
+
