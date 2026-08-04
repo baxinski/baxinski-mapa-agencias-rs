@@ -1,0 +1,48 @@
+import type { Agency } from "./types";
+
+const verifiedAt = "2026-08-03";
+const broadPrograms = ["Cursos de idiomas", "High School", "Estudo e trabalho", "Au Pair", "Ensino superior"];
+
+function agency(input: Partial<Agency> & Pick<Agency, "id" | "slug" | "tradeName" | "city" | "region" | "audienceProfile" | "commercialPotential" | "sourceUrl" | "sourceLabel">): Agency {
+  return {
+    legalName: null,
+    address: null,
+    phone: null,
+    email: null,
+    website: input.sourceUrl,
+    instagram: null,
+    linkedin: null,
+    directors: null,
+    owners: null,
+    commercialManager: null,
+    exchangeLead: null,
+    programs: broadPrograms,
+    belta: null,
+    units: 1,
+    notes: "Potencial comercial é uma classificação editorial inicial e deve ser revisado pela equipe.",
+    verificationStatus: "Verificado",
+    verifiedAt,
+    updatedAt: verifiedAt,
+    ...input,
+  };
+}
+
+export const seedAgencies: Agency[] = [
+  agency({ id: "ci-poa", slug: "ci-porto-alegre", tradeName: "CI Intercâmbio — Porto Alegre", city: "Porto Alegre", region: "Metropolitana", address: "Rua Padre Chagas, 72, Moinhos de Vento, CEP 90570-080", phone: "(51) 99139-6134", sourceUrl: "https://www.ci.com.br/unidade/porto-alegre-moinhos/", sourceLabel: "Página oficial da unidade CI", audienceProfile: "Amplo · estudantes, jovens profissionais e famílias", commercialPotential: "A", units: 3 }),
+  agency({ id: "ci-caxias", slug: "ci-caxias-do-sul", tradeName: "CI Intercâmbio — Caxias do Sul", city: "Caxias do Sul", region: "Serra", address: "Av. Francisco Getúlio Vargas, 1130, sala 24, CEP 95070-560", phone: "(54) 3228-1283", sourceUrl: "https://www.ci.com.br/unidade/caxias-do-sul/", sourceLabel: "Página oficial da unidade CI", audienceProfile: "Amplo · estudantes, jovens profissionais e famílias", commercialPotential: "A", units: 3 }),
+  agency({ id: "ci-bento", slug: "ci-bento-goncalves-consultor", tradeName: "CI — Consultor Bento Gonçalves", city: "Flores da Cunha", region: "Serra", phone: "(54) 99628-1331", address: "Atendimento externo para Bento Gonçalves e região", sourceUrl: "https://www.ci.com.br/unidade/bento-goncalves/", sourceLabel: "Página oficial da unidade CI", audienceProfile: "Regional · atendimento externo", commercialPotential: "B", units: 3 }),
+  agency({ id: "stb-poa", slug: "stb-porto-alegre", tradeName: "STB — Porto Alegre", city: "Porto Alegre", region: "Metropolitana", address: "Av. Coronel Lucas de Oliveira, 505, loja térrea, Mont Serrat, CEP 90450-045", sourceUrl: "https://www.stb.com.br/veja-mais/pesquisar-lojas/porto-alegre-mont-serrat", sourceLabel: "Página oficial da loja STB", audienceProfile: "Premium · estudantes e famílias", commercialPotential: "A", programs: ["Cursos de idiomas", "High School", "Férias", "Trabalho no exterior", "Ensino superior"] }),
+  agency({ id: "stb-caxias", slug: "stb-caxias-do-sul", tradeName: "STB — Caxias do Sul", city: "Caxias do Sul", region: "Serra", address: "Rua Antônio Corsetti, 221, Cinquentenário, CEP 95012-080", sourceUrl: "https://www.stb.com.br/veja-mais/pesquisar-lojas/caxias-do-sul-cinquentenario", sourceLabel: "Página oficial da loja STB", audienceProfile: "Premium · estudantes e famílias", commercialPotential: "A", programs: ["Cursos de idiomas", "High School", "Férias", "Trabalho no exterior", "Ensino superior"] }),
+  agency({ id: "intercultural-poa", slug: "intercultural-porto-alegre", tradeName: "Intercultural — Porto Alegre", city: "Porto Alegre", region: "Metropolitana", address: "Rua Mostardeiro, 777, 14º andar, Independência, CEP 90430-001", phone: "(51) 99584-0999", sourceUrl: "https://www.intercultural.com.br/nossas-lojas/", sourceLabel: "Diretório oficial Intercultural", audienceProfile: "Jovens, estudantes e profissionais", commercialPotential: "A", units: 3 }),
+  agency({ id: "intercultural-caxias", slug: "intercultural-caxias-do-sul", tradeName: "Intercultural — Caxias do Sul", city: "Caxias do Sul", region: "Serra", address: "Rua Sinimbu, 2430, São Pelegrino, CEP 95020-510", phone: "(51) 99584-0999", sourceUrl: "https://www.intercultural.com.br/nossas-lojas/", sourceLabel: "Diretório oficial Intercultural", audienceProfile: "Jovens, estudantes e profissionais", commercialPotential: "A", units: 3 }),
+  agency({ id: "intercultural-sm", slug: "intercultural-santa-maria", tradeName: "Intercultural — Santa Maria", city: "Santa Maria", region: "Centro", address: "Rua Paul Harris, 91, Centro", phone: "(55) 92000-9817", sourceUrl: "https://www.intercultural.com.br/nossas-lojas/", sourceLabel: "Diretório oficial Intercultural", audienceProfile: "Jovens, estudantes e profissionais", commercialPotential: "A", units: 3 }),
+  agency({ id: "academia-caxias", slug: "academia-de-intercambio-serra-gaucha", tradeName: "Academia de Intercâmbio — Serra Gaúcha", city: "Caxias do Sul", region: "Serra", address: "Av. Júlio de Castilhos, 1259, sala 705, Nossa Senhora de Lourdes, CEP 95020-425", phone: "(54) 3536-1420", email: "serragaucha@academiadeintercambio.com.br", sourceUrl: "https://academiadeintercambio.com.br/fale-conosco/", sourceLabel: "Página oficial de contato", audienceProfile: "Personalizado · estudantes e profissionais", commercialPotential: "B", programs: ["Cursos no exterior", "Intercâmbio em grupo", "Acomodação", "Seguro viagem"] }),
+  agency({ id: "usb-poa", slug: "usb-intercambio", tradeName: "USB Intercâmbio", city: "Porto Alegre", region: "Metropolitana", address: "Av. Protásio Alves, 3332, sala 204, Petrópolis", sourceUrl: "https://usbintercambio.com.br/index.php", sourceLabel: "Site oficial USB Intercâmbio", audienceProfile: "Boutique · atendimento personalizado", commercialPotential: "B", programs: ["Cursos de idiomas", "Estudo e trabalho", "Ensino superior", "Programas personalizados"] }),
+  agency({ id: "s7-poa", slug: "s7-intercambio-porto-alegre", legalName: "STUDY TOUR & TRAVEL AGÊNCIA DE VIAGENS E INTERCÂMBIO EIRELI", tradeName: "S7 Intercâmbio — Porto Alegre", city: "Porto Alegre", region: "Metropolitana", address: "Av. Coronel Lucas de Oliveira, 505, Petrópolis", phone: "(51) 2108-7171", email: "privacidade@s7intercambio.com.br", sourceUrl: "https://s7intercambio.com.br/privacidade/", sourceLabel: "Política de privacidade oficial S7", audienceProfile: "Digital · estudantes e profissionais", commercialPotential: "A", programs: ["Cursos de idiomas", "Estudo e trabalho", "High School", "Graduação"] }),
+  agency({ id: "ee-nh", slug: "estudar-no-exterior-novo-hamburgo", tradeName: "Estudar no Exterior — Novo Hamburgo", city: "Novo Hamburgo", region: "Vale dos Sinos", address: "Rua Cel. Travassos, 1040, Rondônia", email: "contato@estudarnoexterior.com.br", sourceUrl: "https://estudarnoexterior.com.br/sobre/lojas", sourceLabel: "Página oficial de lojas", audienceProfile: "Estudantes e profissionais do Vale dos Sinos", commercialPotential: "B" }),
+  agency({ id: "triptravel-poa", slug: "triptravel-porto-alegre", tradeName: "TripTravel Viagens e Intercâmbios", city: "Porto Alegre", region: "Metropolitana", address: "Rua Quintino Bocaiúva, 267, Moinhos de Vento, CEP 90570-142", email: "intercambio@triptravel.com.br", belta: true, sourceUrl: "https://www.belta.org.br/listing/triptravel/", sourceLabel: "Perfil oficial na BELTA", audienceProfile: "Premium · intercâmbio e viagens sob medida", commercialPotential: "A", programs: ["Cursos de idiomas", "Férias", "Grupos", "Viagens educacionais"] }),
+  agency({ id: "travelmate-caxias", slug: "travelmate-caxias-do-sul", tradeName: "TravelMate — Caxias do Sul", city: "Caxias do Sul", region: "Serra", address: "Rua Bento Gonçalves, 2437, sala 202, Centro, CEP 95020-412", phone: "(54) 3223-4067 · (54) 98413-4935", commercialManager: "Renata Vanin", belta: true, sourceUrl: "https://intercambio.travelmate.com.br/institucional-caxias-do-sul/", sourceLabel: "Página oficial da unidade TravelMate", audienceProfile: "Amplo · estudantes, teens e profissionais", commercialPotential: "A", programs: ["Teen Program", "High School", "Cursos de idiomas", "Study & Work", "Au Pair", "Universidades"] }),
+  agency({ id: "freeway-scs", slug: "free-way-santa-cruz-do-sul", legalName: "FREE WAY INTERCÂMBIO LTDA", tradeName: "Free Way Intercâmbio — Santa Cruz", city: "Santa Cruz do Sul", region: "Vales", address: "Rua Lauro Elemar Hansen, 156, fundos", phone: "(51) 99558-5455", email: "contato@freewayintercambio.com.br", sourceUrl: "https://www.freewayintercambio.com.br/home/contato", sourceLabel: "Página oficial de contato", audienceProfile: "Regional · estudantes e profissionais", commercialPotential: "B", units: 2 }),
+  agency({ id: "freeway-lajeado", slug: "free-way-lajeado", legalName: "FREE WAY INTERCÂMBIO LTDA", tradeName: "Free Way Intercâmbio — Lajeado", city: "Lajeado", region: "Vales", address: "Av. Benjamin Constant, 670/205, Oficina670 Coworking", phone: "(51) 99815-4350", email: "contato@freewayintercambio.com.br", sourceUrl: "https://www.freewayintercambio.com.br/home/contato", sourceLabel: "Página oficial de contato", audienceProfile: "Regional · estudantes e profissionais", commercialPotential: "B", units: 2 }),
+  agency({ id: "mundo-poa", slug: "mundo-intercambio-porto-alegre", legalName: "MUNDO INTERCÂMBIO LTDA", tradeName: "Mundo Intercâmbio", city: "Porto Alegre", region: "Metropolitana", address: "Av. Carlos Gomes, 1492, sala 312, CEP 90480-001", linkedin: "https://br.linkedin.com/company/mundo-interc%C3%A2mbio", sourceUrl: "https://mundointercambio.com/", sourceLabel: "Site oficial Mundo Intercâmbio", audienceProfile: "Digital e presencial · amplo", commercialPotential: "A", programs: ["Cursos de idiomas", "Au Pair", "Graduação no exterior", "Vistos", "Passagens"] }),
+];
