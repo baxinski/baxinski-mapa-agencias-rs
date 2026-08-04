@@ -1,5 +1,5 @@
-import LeadCapture from "@/app/components/LeadCapture";
+import { redirect } from "next/navigation";
 
 export default function FindAgencyPage() {
-  return <main className="lead-page"><LeadCapture /></main>;
+  redirect("/agencias");
 }
