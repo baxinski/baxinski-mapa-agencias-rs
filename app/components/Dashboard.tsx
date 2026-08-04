@@ -20,8 +20,18 @@ function Metric({ label, value, hint, tone = "normal" }: { label: string; value:
 export default function Dashboard() {
   const [data, setData] = useState<DashboardResponse | null>(null);
   const [error, setError] = useState("");
-  useEffect(() => { fetch("/api/dashboard").then(async (response) => { if (!response.ok) throw new Error(); return await response.json() as DashboardResponse; }).then(setData).catch(() => setError("Não foi possível carregar os indicadores agora.")); }, []);
-  if (error) return <div className="empty-state"><strong>{error}</strong><p>Atualize a página para tentar novamente.</p></div>;
+  const [attempt, setAttempt] = useState(0);
+  useEffect(() => {
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 15000);
+    fetch("/api/dashboard", { signal: controller.signal })
+      .then(async (response) => { if (!response.ok) throw new Error(); return await response.json() as DashboardResponse; })
+      .then(setData)
+      .catch((reason: unknown) => setError(reason instanceof DOMException && reason.name === "AbortError" ? "O painel demorou mais que o esperado para responder." : "Não foi possível carregar os indicadores agora."))
+      .finally(() => window.clearTimeout(timeout));
+    return () => { window.clearTimeout(timeout); controller.abort(); };
+  }, [attempt]);
+  if (error) return <div className="empty-state"><strong>{error}</strong><p>Verifique a conexão e tente carregar o painel novamente.</p><button className="button primary" type="button" onClick={() => { setError(""); setData(null); setAttempt((value) => value + 1); }}>Tentar novamente</button></div>;
   if (!data) return <div className="loading-panel"><strong>Preparando o painel comercial…</strong><p>Consolidando agências, contatos e follow-ups.</p></div>;
   const { metrics, charts } = data;
   return <div className="crm-layout">

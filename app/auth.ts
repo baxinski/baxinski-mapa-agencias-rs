@@ -54,14 +54,15 @@ export async function getAuthenticatedUserWithRole(): Promise<AuthenticatedUserW
   const user = await getAuthenticatedUser();
   if (!user) return null;
   const key = userKey(user);
-  const stored = await getUserRole(key);
   const configuredAdmins = String((env as unknown as Record<string, string | undefined>).ADMIN_GITHUB_LOGINS ?? "")
     .split(",").map((value) => value.trim().toLowerCase()).filter(Boolean);
   const configuredChatGPTAdmins = String((env as unknown as Record<string, string | undefined>).ADMIN_CHATGPT_EMAILS ?? "")
     .split(",").map((value) => value.trim().toLowerCase()).filter(Boolean);
   const isConfiguredAdmin = (user.provider === "github" && configuredAdmins.includes(user.login.toLowerCase())) ||
     (user.provider === "chatgpt" && configuredChatGPTAdmins.includes(user.email.toLowerCase()));
-  const role = isConfiguredAdmin ? "admin" : (stored?.active ? stored.role : "consulta") as UserRole;
+  if (isConfiguredAdmin) return { ...user, role: "admin", userKey: key };
+  const stored = await getUserRole(key);
+  const role = (stored?.active ? stored.role : "consulta") as UserRole;
   return { ...user, role, userKey: key };
 }
 
