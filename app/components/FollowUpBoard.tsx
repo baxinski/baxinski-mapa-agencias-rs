@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import BrandLogo from "./BrandLogo";
 import type { TaskPriority, TaskRecord } from "@/lib/types";
 
 const priorities: TaskPriority[] = ["Baixa", "Média", "Alta", "Urgente"];
@@ -93,7 +94,7 @@ export default function FollowUpBoard() {
   );
 
   return <div className="crm-layout">
-    <aside className="crm-sidebar"><div className="crm-sidebar-brand"><span className="brand-mark">RS</span><div><strong>Mapa de Agências</strong><small>Consulta e acompanhamento</small></div></div><nav aria-label="Menu de consulta"><span className="crm-nav-label">Workspace</span><Link href="/dashboard">Dashboard</Link><Link href="/mapa">Mapa regional</Link><Link href="/agencias">Agências</Link><Link className="crm-nav-active" href="/follow-ups">Follow-ups</Link><span className="crm-nav-label">Gestão</span><Link href="/admin">Painel administrativo</Link></nav></aside>
+    <aside className="crm-sidebar"><div className="crm-sidebar-brand"><BrandLogo framed /></div><nav aria-label="Menu de consulta"><span className="crm-nav-label">Workspace</span><Link href="/dashboard">Dashboard</Link><Link href="/mapa">Mapa regional</Link><Link href="/agencias">Agências</Link><Link className="crm-nav-active" href="/follow-ups">Follow-ups</Link><span className="crm-nav-label">Gestão</span><Link href="/admin">Painel administrativo</Link></nav></aside>
     <section className="crm-content"><header className="crm-heading"><div><span className="eyebrow">Atividades de consulta</span><h1>Follow-ups</h1><p>Registre uma próxima ação para qualquer agência do diretório do Rio Grande do Sul.</p></div></header>
       <section className="follow-create"><div><span className="eyebrow">Nova tarefa</span><h2>Agendar uma próxima ação</h2><p>{message || "A interação entra automaticamente no histórico da agência."}</p></div>
         <form onSubmit={submit}>

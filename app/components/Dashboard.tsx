@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import BrandLogo from "./BrandLogo";
 import { useEffect, useState } from "react";
 import type { AccompanimentResponse } from "@/lib/types";
 
@@ -35,7 +36,7 @@ export default function Dashboard() {
   const openTasks = tasks.filter((task) => task.status === "Aberta");
   const overdueTasks = openTasks.filter((task) => task.dueAt.slice(0, 10) < new Date().toISOString().slice(0, 10)).slice(0, 6);
   return <div className="crm-layout">
-    <aside className="crm-sidebar"><div className="crm-sidebar-brand"><span className="brand-mark">RS</span><div><strong>Mapa de Agências</strong><small>Consulta e acompanhamento</small></div></div><nav aria-label="Menu de consulta"><span className="crm-nav-label">Workspace</span><Link className="crm-nav-active" href="/dashboard">Dashboard</Link><Link href="/mapa">Mapa regional</Link><Link href="/agencias">Agências</Link><Link href="/acompanhamento">Acompanhamento</Link><Link href="/relatorios">Relatórios</Link><span className="crm-nav-label">Gestão</span><Link href="/usuarios">Usuários e permissões</Link><Link href="/importar">Importar base</Link><Link href="/admin">Painel administrativo</Link></nav><div className="crm-sidebar-note"><span>Diretório completo</span><strong>{metrics.total.toLocaleString("pt-BR")}</strong><small>{agencies.filter((agency) => agency.agencyKind === "exchange").length} intercâmbio · {agencies.filter((agency) => agency.agencyKind === "tourism").length.toLocaleString("pt-BR")} turismo</small></div></aside>
+    <aside className="crm-sidebar"><div className="crm-sidebar-brand"><BrandLogo framed /></div><nav aria-label="Menu de consulta"><span className="crm-nav-label">Workspace</span><Link className="crm-nav-active" href="/dashboard">Dashboard</Link><Link href="/mapa">Mapa regional</Link><Link href="/agencias">Agências</Link><Link href="/acompanhamento">Acompanhamento</Link><Link href="/relatorios">Relatórios</Link><span className="crm-nav-label">Gestão</span><Link href="/usuarios">Usuários e permissões</Link><Link href="/importar">Importar base</Link><Link href="/admin">Painel administrativo</Link></nav><div className="crm-sidebar-note"><span>Diretório completo</span><strong>{metrics.total.toLocaleString("pt-BR")}</strong><small>{agencies.filter((agency) => agency.agencyKind === "exchange").length} intercâmbio · {agencies.filter((agency) => agency.agencyKind === "tourism").length.toLocaleString("pt-BR")} turismo</small></div></aside>
     <section className="crm-content"><header className="crm-heading"><div><span className="eyebrow">Acompanhamento · RS</span><h1>Bom dia, equipe.</h1><p>Uma visão simples para entender o estado das fichas, registrar contatos e organizar as próximas ações.</p></div><Link className="button primary" href="/acompanhamento">Abrir acompanhamento <span>↗</span></Link></header>
       <div className="dashboard-actions"><Link href="/acompanhamento?status=Dados%20incompletos">Revisar fichas incompletas <span>→</span></Link><Link href="/acompanhamento?overdue=1">Ações vencidas <b>{metrics.overdue}</b></Link><Link href="/admin">Cadastrar agência <span>＋</span></Link><Link href="/acompanhamento">Registrar contato <span>＋</span></Link></div>
       <div className="metric-grid"><Metric label="Agências no mapa" value={metrics.total.toLocaleString("pt-BR")} hint="Intercâmbio e turismo" /><Metric label="Ainda não analisadas" value={metrics.notAnalyzed} hint={`${metrics.incomplete} com dados incompletos`} tone="alert" /><Metric label="Prontas para contato" value={metrics.ready} hint="Informações essenciais preenchidas" tone="good" /><Metric label="Contatos realizados" value={metrics.contacted} hint={`${metrics.awaitingReply} aguardando retorno`} /><Metric label="Reuniões agendadas" value={metrics.meetings} hint={`${metrics.visitsPlanned} visitas planejadas`} tone="good" /><Metric label="Ações vencidas" value={metrics.overdue} hint={`${openTasks.length} ações abertas`} tone={metrics.overdue ? "alert" : "normal"} /></div>
@@ -44,4 +45,3 @@ export default function Dashboard() {
     </section>
   </div>;
 }
-

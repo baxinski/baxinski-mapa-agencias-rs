@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { headers } from "next/headers";
 import MainNav from "@/app/components/MainNav";
+import BrandLogo from "@/app/components/BrandLogo";
 import "./globals.css";
 
 // Rótulos legados preservados para integrações: className="nav-link nav-exchange">Intercâmbio, className="nav-link nav-tourism">Agências de turismo, className="nav-link nav-map">Mapa regional. Rotas públicas: /agencias, /turismo, /mapa, /admin.
@@ -15,6 +16,7 @@ export async function generateMetadata(): Promise<Metadata> {
   return {
     title: { default: "Mapa de Agências RS", template: "%s · Mapa de Agências RS" },
     description,
+    icons: { icon: "/branding/mapa-agencias-mark.png" },
     openGraph: { title: "Mapa de Agências RS", description, type: "website", locale: "pt_BR", images: [{ url: image, width: 1734, height: 907, alt: "Mapa de Agências RS" }] },
     twitter: { card: "summary_large_image", title: "Mapa de Agências RS", description, images: [image] },
   };
@@ -26,14 +28,13 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
       <body>
         <header className="site-header">
           <Link href="/" className="brand" aria-label="Mapa de Agências RS — início">
-            <span className="brand-mark">RS</span>
-            <span><strong>Mapa de Agências</strong><small>Rio Grande do Sul</small></span>
+            <BrandLogo />
           </Link>
           <MainNav />
         </header>
         {children}
         <footer className="site-footer">
-          <div><span className="eyebrow">Mapa de Agências RS</span><p>Diretório público para consulta territorial e acompanhamento interno.</p></div>
+          <div><BrandLogo framed className="footer-brand-logo" /><p>Diretório público para consulta territorial e acompanhamento interno.</p></div>
           <div className="footer-links"><Link href="/#sobre">Sobre o projeto</Link><Link href="/metodologia">Metodologia</Link><Link href="/metodologia#criterios">Critérios de inclusão</Link><Link href="/metodologia#fontes">Fontes dos dados</Link><Link href="/politica-privacidade">Política de privacidade</Link><a href="https://github.com/baxinski/baxinski-mapa-agencias-rs" target="_blank" rel="noreferrer">Contato / repositório ↗</a></div>
           <div><p>Dados públicos verificados em 03 ago 2026.</p><p>Projeto Mapa de Agências RS.</p></div>
         </footer>
@@ -41,4 +42,3 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
     </html>
   );
 }
-
